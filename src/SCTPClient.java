@@ -21,14 +21,14 @@ class SCTPClient {
 			System.out.println("Trying connection to server");
 			Thread.sleep(3000);
 			SctpChannel sc = SctpChannel.open(addr, 0, 0); // Connect to server using the address
-			channels.put(neighbor.nodeID, sc);
+			channels.put(neighbor.ID, sc);
 			System.out.println("Connected to Server " + addr.getHostName());
 		}
 	}
 
 	public void sendMessage(Node destination, Message msg) throws Exception {
 		MessageInfo messageInfo = MessageInfo.createOutgoing(null, 0); // MessageInfo for SCTP layer
-		SctpChannel sc = channels.get(destination.nodeID);
+		SctpChannel sc = channels.get(destination.ID);
 		sc.send(msg.toByteBuffer(), messageInfo); // Messages are sent over SCTP using ByteBuffer
 	}
 

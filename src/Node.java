@@ -1,16 +1,25 @@
+import java.util.ArrayList;
+
 public class Node {
 
-    int nodeID;
+    int ID;
     String hostName;
     int port;
+    ArrayList<Node> neighbors = new ArrayList<Node>();
 
     public Node(int nodeID, String hostName, int port) {
-        this.nodeID = nodeID;
+        this.ID = nodeID;
         this.hostName = hostName;
         this.port = port;
     }
 
     public String toString() {
-        return nodeID + " " + hostName + " " + port;
+        return ID + " " + hostName + " " + port;
     }
+
+    public void addNeighbor(Node neighbor) {
+        neighbors.add(neighbor);
+    }
+
+
 }

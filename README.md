@@ -1,6 +1,6 @@
-## Advaced Operating systems
+# Advaced Operating systems
 
-# Koo and Toueg Checkpointing and Recovery protocol
+## Koo and Toueg Checkpointing and Recovery protocol
 
 - avoids domino effect and livelock
 

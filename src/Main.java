@@ -13,7 +13,7 @@ public class Main {
     static ArrayList<Action> sequence = new ArrayList<Action>();
 
     public static void main(String[] args) throws Exception {
-        String fileName = "/home/010/s/sx/sxc180101/AdvancedOS/project2/config.txt";
+        String fileName = "/home/010/s/sx/sxc180101/AdvancedOS/project3/config.txt";
         currentNodeID = Integer.parseInt(args[0]);
         readFile(fileName);
         printInfo(Integer.parseInt(args[0]));
@@ -37,7 +37,7 @@ public class Main {
             }
 
             data = data.split("#")[0].trim();
-            
+
             // beginning of file
             if (count == 0) {
                 String[] dataArr = data.split(" ");

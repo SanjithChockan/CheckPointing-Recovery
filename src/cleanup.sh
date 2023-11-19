@@ -6,7 +6,7 @@
 netid=sxc180101
 
 # Root directory of project [CHANGE THIS]
-PROJDIR=/home/010/s/sx/sxc180101/AdvancedOS/project2
+PROJDIR=/home/010/s/sx/sxc180101/AdvancedOS/project3
 
 # Directory where the config file is located on your local system [CHANGE THIS]
 CONFIGLOCAL=config.txt

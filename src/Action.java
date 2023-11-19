@@ -7,5 +7,8 @@ public class Action {
         this.mode = mode;
     }
 
-
+    @Override
+    public String toString() {
+        return initiator.ID + ": " + mode; 
+    }
 }

@@ -13,13 +13,12 @@ public class Node {
         this.port = port;
     }
 
-    public String toString() {
-        return ID + " " + hostName + " " + port;
-    }
-
     public void addNeighbor(Node neighbor) {
         neighbors.add(neighbor);
     }
 
+    public String toString() {
+        return ID + " " + hostName + " " + port;
+    }
 
 }

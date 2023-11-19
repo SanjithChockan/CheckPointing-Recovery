@@ -22,6 +22,8 @@ public class Main {
 
     public static void printInfo(int machineNum) {
         System.out.println("Printing from machine: " + machineNum);
+        System.out.println("Neighbors: " + currentNode.neighbors);
+        System.out.println("Sequence: " + sequence.toString());
     }
 
     public static void readFile(String fileName) throws FileNotFoundException {
@@ -43,6 +45,8 @@ public class Main {
                 String[] dataArr = data.split(" ");
                 numOfNodes = Integer.parseInt(dataArr[0]);
                 minDelay = Integer.parseInt(dataArr[1]);
+                count += 1;
+                continue;
             }
 
             // add nodes

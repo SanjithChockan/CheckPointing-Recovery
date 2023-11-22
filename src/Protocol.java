@@ -11,11 +11,13 @@
 
 import java.util.ArrayList;
 import java.util.Random;
+import java.util.Scanner;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class Protocol {
 
+    SCTPClient client;
     Node currentNode;
     ArrayList<Action> operations;
     ConcurrentHashMap<Integer, Integer> FLS;
@@ -25,6 +27,14 @@ public class Protocol {
     public Protocol(Node currentNode, ArrayList<Action> operations) {
         this.currentNode = currentNode;
         this.operations = operations;
+        this.client = new SCTPClient(this.currentNode.neighbors);
+        // start clients
+        try {
+            startClients();
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
         initializeFLS();
         initializeLLR();
     }
@@ -43,6 +53,10 @@ public class Protocol {
         for (Node neighbor : currentNode.neighbors) {
             LLR.put(neighbor.ID, Integer.MIN_VALUE);
         }
+    }
+
+    public void startClients() throws Exception {
+        client.initiateChannels();
     }
 
     public void processReceivedMessage(Message msg) {
@@ -67,7 +81,12 @@ public class Protocol {
         @Override
         public void run() {
             // TODO Auto-generated method stub
-            takeTentativeCK();
+            sendMessageLock.lock();
+            try {
+                takeTentativeCK();
+            } finally {
+                sendMessageLock.unlock();
+            }
         }
 
         public void takeTentativeCK() {
@@ -95,9 +114,22 @@ public class Protocol {
 
         public void sendApplicationMessages() {
             Random rand = new Random();
-            
+
             while (true) {
                 // pick random neighbor and send message
+                sendMessageLock.lock();
+                try {
+                    Node randomNeighbor = currentNode.neighbors.get(rand.nextInt(currentNode.neighbors.size()));
+                    try {
+                        client.sendMessage(randomNeighbor,
+                                new Message(MessageType.APPLICATION, "sending app message", currentNode.ID));
+                    } catch (Exception e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
+                } finally {
+                    sendMessageLock.unlock();
+                }
 
             }
 

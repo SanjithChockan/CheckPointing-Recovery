@@ -7,7 +7,7 @@ import java.io.ByteArrayOutputStream;
 
 // Enumeration to store message types
 enum MessageType {
-	APPLICATION, CHECKPOINT, RECOVER
+	APPLICATION, TENTATIVE_CK, COMMIT, RECOVER, ROLLBACK
 };
 
 // Object to store message passing between nodes

@@ -9,20 +9,28 @@
  * 
  */
 
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class Protocol {
 
     Node currentNode;
-    HashMap<Integer, Integer> FLS;
-    HashMap<Integer, Integer> LLR;
+    ArrayList<Action> operations;
+    ConcurrentHashMap<Integer, Integer> FLS;
+    ConcurrentHashMap<Integer, Integer> LLR;
     ReentrantLock sendMessageLock = new ReentrantLock(Boolean.TRUE);
 
-    public Protocol(Node currentNode) {
+    public Protocol(Node currentNode, ArrayList<Action> operations) {
         this.currentNode = currentNode;
+        this.operations = operations;
         initializeFLS();
         initializeLLR();
+    }
+
+    public void startProtcol() {
+        // iterate through operations (checkpointing/recovery)
     }
 
     public void initializeFLS() {
@@ -37,8 +45,8 @@ public class Protocol {
         }
     }
 
-    public void receiveMessages() {
-        
+    public void processReceivedMessage(Message msg) {
+
     }
 
     /*
@@ -86,6 +94,12 @@ public class Protocol {
         }
 
         public void sendApplicationMessages() {
+            Random rand = new Random();
+            
+            while (true) {
+                // pick random neighbor and send message
+
+            }
 
         }
     }

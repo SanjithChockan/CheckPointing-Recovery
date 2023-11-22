@@ -10,7 +10,7 @@ public class Main {
     static int currentNodeID;
     static Node currentNode;
 
-    static ArrayList<Action> sequence = new ArrayList<Action>();
+    static ArrayList<Action> operations = new ArrayList<Action>();
 
     public static void main(String[] args) throws Exception {
         String fileName = "/home/010/s/sx/sxc180101/AdvancedOS/project3/config.txt";
@@ -23,7 +23,7 @@ public class Main {
     public static void printInfo(int machineNum) {
         System.out.println("Printing from machine: " + machineNum);
         System.out.println("Neighbors: " + currentNode.neighbors);
-        System.out.println("Sequence: " + sequence.toString());
+        System.out.println("Sequence: " + operations.toString());
     }
 
     public static void readFile(String fileName) throws FileNotFoundException {
@@ -90,7 +90,7 @@ public class Main {
                 String[] crLine = data.split(",");
                 String mode = crLine[0].substring(1);
                 int id = Integer.parseInt(crLine[1].substring(0, crLine[1].length()-1));
-                sequence.add(new Action(nodes.get(id), mode));
+                operations.add(new Action(nodes.get(id), mode));
             }
         }
         myReader.close();

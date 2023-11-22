@@ -1,7 +1,5 @@
 import java.io.Serializable;
 import java.nio.ByteBuffer;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.io.ObjectOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ByteArrayInputStream;
@@ -9,7 +7,7 @@ import java.io.ByteArrayOutputStream;
 
 // Enumeration to store message types
 enum MessageType {
-	string, REPLY, REQUEST
+	APPLICATION, CHECKPOINT, RECOVER
 };
 
 // Object to store message passing between nodes
@@ -21,18 +19,12 @@ public class Message implements Serializable {
 	MessageType msgType;
 	public String message;
 	int NodeID;
-	AtomicInteger timestamp;
-	AtomicIntegerArray vectorClock;
-	AtomicInteger criticalSectionCount;
 
 	// Constructor
-	public Message(MessageType msgType, String message, int NodeID, AtomicInteger timestamp, AtomicIntegerArray vectorClock, AtomicInteger criticalSectionCount) {
+	public Message(MessageType msgType, String message, int NodeID) {
 		this.msgType = msgType;
 		this.message = message;
 		this.NodeID = NodeID;
-		this.timestamp = timestamp;
-		this.vectorClock = vectorClock;
-		this.criticalSectionCount = criticalSectionCount;
 	}
 
 	// Convert current instance of Message to ByteBuffer in order to send message

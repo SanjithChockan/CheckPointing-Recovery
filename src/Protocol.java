@@ -11,49 +11,48 @@
 
 import java.util.ArrayList;
 import java.util.Random;
-import java.util.Scanner;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class Protocol {
 
+    SCTPServer server;
     SCTPClient client;
     Node currentNode;
     ArrayList<Action> operations;
-    ConcurrentHashMap<Integer, Integer> FLS;
-    ConcurrentHashMap<Integer, Integer> LLR;
+    ConcurrentHashMap<Integer, Integer> FLS = new ConcurrentHashMap<Integer, Integer>();
+    ConcurrentHashMap<Integer, Integer> LLR = new ConcurrentHashMap<Integer, Integer>();
+    ConcurrentHashMap<Integer, Integer> sendLabels = new ConcurrentHashMap<Integer, Integer>();
     ReentrantLock sendMessageLock = new ReentrantLock(Boolean.TRUE);
 
-    public Protocol(Node currentNode, ArrayList<Action> operations) {
+    public Protocol(Node currentNode, ArrayList<Action> operations) throws Exception {
         this.currentNode = currentNode;
         this.operations = operations;
+        this.server = new SCTPServer(currentNode.port);
         this.client = new SCTPClient(this.currentNode.neighbors);
-        // start clients
-        try {
-            startClients();
-        } catch (Exception e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
-        initializeFLS();
-        initializeLLR();
+        initialize();
+        initialize();
+
+        // start server and clients
+        new Thread(server).start();
+        Thread.sleep(5000);
+        startClients();
+        Thread.sleep(5000); 
     }
 
     public void startProtcol() {
         // iterate through operations (checkpointing/recovery)
     }
 
-    public void initializeFLS() {
+
+    public void initialize() {
         for (Node neighbor : currentNode.neighbors) {
             FLS.put(neighbor.ID, Integer.MIN_VALUE);
+            LLR.put(neighbor.ID, Integer.MIN_VALUE);
+            sendLabels.put(neighbor.ID, 0);
         }
     }
 
-    public void initializeLLR() {
-        for (Node neighbor : currentNode.neighbors) {
-            LLR.put(neighbor.ID, Integer.MIN_VALUE);
-        }
-    }
 
     public void startClients() throws Exception {
         client.initiateChannels();
@@ -91,6 +90,7 @@ public class Protocol {
 
         public void takeTentativeCK() {
             // take local checkpoint
+            LocalState tentativeCheckpoint = new LocalState(sendLabels, FLS, LLR);
             // then send request to cohorts
         }
 
@@ -121,6 +121,12 @@ public class Protocol {
                 try {
                     Node randomNeighbor = currentNode.neighbors.get(rand.nextInt(currentNode.neighbors.size()));
                     try {
+                        int newLabelValue = sendLabels.get(randomNeighbor.ID) + 1;
+                        // set FLS if no message has been sent since last checkpoint
+                        if (FLS.get(randomNeighbor.ID) == Integer.MIN_VALUE) {
+                            FLS.put(randomNeighbor.ID, newLabelValue);
+                        }
+                        sendLabels.put(randomNeighbor.ID, newLabelValue);
                         client.sendMessage(randomNeighbor,
                                 new Message(MessageType.APPLICATION, "sending app message", currentNode.ID));
                     } catch (Exception e) {

@@ -1,3 +1,4 @@
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 
 public class LocalState {
@@ -13,7 +14,15 @@ public class LocalState {
     int sequenceNumber;
     AtomicIntegerArray vectorClock;
 
-    public LocalState() {
+    ConcurrentHashMap<Integer, Integer> sendLabels;
+    ConcurrentHashMap<Integer, Integer> FLS;
+    ConcurrentHashMap<Integer, Integer> LLR;
+
+    public LocalState(ConcurrentHashMap<Integer, Integer> sendLabels, ConcurrentHashMap<Integer, Integer> FLS,
+            ConcurrentHashMap<Integer, Integer> LLR) {
+        this.sendLabels = sendLabels;
+        this.LLR = LLR;
+        this.FLS = FLS;
 
     }
 }

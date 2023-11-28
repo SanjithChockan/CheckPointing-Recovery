@@ -37,22 +37,21 @@ public class Protocol {
         new Thread(server).start();
         Thread.sleep(5000);
         startClients();
-        Thread.sleep(5000); 
+        Thread.sleep(5000);
     }
 
     public void startProtcol() {
         // iterate through operations (checkpointing/recovery)
     }
 
-
     public void initialize() {
-        for (Node neighbor : currentNode.neighbors) {
-            FLS.put(neighbor.ID, Integer.MIN_VALUE);
-            LLR.put(neighbor.ID, Integer.MIN_VALUE);
-            sendLabels.put(neighbor.ID, 0);
+        for (Integer neighbor : currentNode.neighbors.keySet()) {
+            Node nei = currentNode.neighbors.get(neighbor);
+            FLS.put(nei.ID, Integer.MIN_VALUE);
+            LLR.put(nei.ID, Integer.MIN_VALUE);
+            sendLabels.put(nei.ID, 0);
         }
     }
-
 
     public void startClients() throws Exception {
         client.initiateChannels();
@@ -77,6 +76,7 @@ public class Protocol {
 
     class Checkpoint implements Runnable {
 
+        ArrayList<Integer> cohorts;
         @Override
         public void run() {
             // TODO Auto-generated method stub
@@ -89,14 +89,48 @@ public class Protocol {
         }
 
         public void takeTentativeCK() {
+            LocalState tentativeCheckpoint;
             // take local checkpoint
-            LocalState tentativeCheckpoint = new LocalState(sendLabels, FLS, LLR);
-            // then send request to cohorts
+            synchronized (LLR) {
+                tentativeCheckpoint = new LocalState(sendLabels, FLS, LLR);
+                cohorts = new ArrayList<Integer>();
+                
+                // get cohorts and set LLR & FLS to ground
+                for (Integer k: LLR.keySet()) {
+                    if (LLR.get(k) != Integer.MIN_VALUE) {
+                        cohorts.add(k);
+                        LLR.put(k, Integer.MIN_VALUE);
+                    }
+                }
+            }
+            
+            boolean commit = sendRequestToCohorts(tentativeCheckpoint, cohorts);
+
+            // commit after receving responses
+            if (commit) {
+                commitCheckpoints();
+            }
         }
 
-        public void sendRequestToCohorts() {
+        public boolean sendRequestToCohorts(LocalState ck, ArrayList<Integer> cohorts) {
 
+            // request cohorts to take checkpoint
+            for (Integer c: cohorts) {
+                try {
+                    client.sendMessage(currentNode.neighbors.get(c), new Message(MessageType.TENTATIVE_CK, "requesting to take tentative checkpoint", currentNode.ID));
+                } catch (Exception e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
+            }
+
+            
             // await until you receive decision
+
+            return false;
+        }
+
+        public void commitCheckpoints() {
 
         }
     }

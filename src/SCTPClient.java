@@ -5,23 +5,24 @@ import java.util.HashMap;
 
 class SCTPClient {
 	// PORT to connect to server
-	ArrayList<Node> neighbors;
+	HashMap<Integer, Node> neighbors;
 	int MAX_MSG_SIZE = 4096;
 	HashMap<Integer, SctpChannel> channels;
 
-	public SCTPClient(ArrayList<Node> neighbors) {
+	public SCTPClient(HashMap<Integer, Node> neighbors) {
 		this.neighbors = neighbors;
 		channels = new HashMap<>();
 	}
 
 	public void initiateChannels() throws Exception {
-		for (Node neighbor : neighbors) {
-			InetSocketAddress addr = new InetSocketAddress(neighbor.hostName, neighbor.port);
+		for (Integer neighbor : neighbors.keySet()) {
+			Node nei = neighbors.get(neighbor);
+			InetSocketAddress addr = new InetSocketAddress(nei.hostName, nei.port);
 
 			System.out.println("Trying connection to server");
 			Thread.sleep(3000);
 			SctpChannel sc = SctpChannel.open(addr, 0, 0); // Connect to server using the address
-			channels.put(neighbor.ID, sc);
+			channels.put(nei.ID, sc);
 			System.out.println("Connected to Server " + addr.getHostName());
 		}
 	}

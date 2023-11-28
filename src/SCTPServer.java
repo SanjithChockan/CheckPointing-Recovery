@@ -2,6 +2,7 @@ import com.sun.nio.sctp.*;
 
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 
 public class SCTPServer implements Runnable {
 	// Port number to open server for clients to connect
@@ -42,6 +43,8 @@ public class SCTPServer implements Runnable {
 	class ClientHandler implements Runnable {
 
 		SctpChannel sc;
+
+
 		// Terminal text colors
 		String RESET = "\u001B[0m";
 		String RED = "\u001B[31m";

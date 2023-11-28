@@ -28,9 +28,16 @@ public class Protocol {
     ConcurrentHashMap<Integer, Integer> sendLabels = new ConcurrentHashMap<Integer, Integer>();
     ReentrantLock sendMessageLock = new ReentrantLock(Boolean.TRUE);
 
+    // if initiator, don't need to check LLR >= FLS > ground
+    AtomicBoolean initiator = new AtomicBoolean(Boolean.TRUE);
+
     AtomicInteger sentRequests = new AtomicInteger();
     AtomicBoolean awaitResult = new AtomicBoolean(Boolean.TRUE);
     AtomicBoolean willingToCheckPoint = new AtomicBoolean(Boolean.TRUE);
+
+    // add local state to list everytime you make a perm checkpoint
+    ArrayList<LocalState> permCheckpoints = new ArrayList<LocalState>();
+
 
     public Protocol(Node currentNode, ArrayList<Action> operations) throws Exception {
         this.currentNode = currentNode;

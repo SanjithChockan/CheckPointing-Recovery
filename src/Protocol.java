@@ -12,6 +12,8 @@
 import java.util.ArrayList;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class Protocol {
@@ -20,10 +22,15 @@ public class Protocol {
     SCTPClient client;
     Node currentNode;
     ArrayList<Action> operations;
+    Application app = new Application();
     ConcurrentHashMap<Integer, Integer> FLS = new ConcurrentHashMap<Integer, Integer>();
     ConcurrentHashMap<Integer, Integer> LLR = new ConcurrentHashMap<Integer, Integer>();
     ConcurrentHashMap<Integer, Integer> sendLabels = new ConcurrentHashMap<Integer, Integer>();
     ReentrantLock sendMessageLock = new ReentrantLock(Boolean.TRUE);
+
+    AtomicInteger sentRequests = new AtomicInteger();
+    AtomicBoolean awaitResult = new AtomicBoolean(Boolean.TRUE);
+    AtomicBoolean willingToCheckPoint = new AtomicBoolean(Boolean.TRUE);
 
     public Protocol(Node currentNode, ArrayList<Action> operations) throws Exception {
         this.currentNode = currentNode;
@@ -38,6 +45,7 @@ public class Protocol {
         Thread.sleep(5000);
         startClients();
         Thread.sleep(5000);
+        new Thread(app).start();
     }
 
     public void startProtcol() {
@@ -58,6 +66,11 @@ public class Protocol {
     }
 
     public void processReceivedMessage(Message msg) {
+        // process application message
+
+        // process willing_to_ck: "yes" or "no" (true or false) to checkpoint message
+
+        // process commit message
 
     }
 
@@ -77,6 +90,7 @@ public class Protocol {
     class Checkpoint implements Runnable {
 
         ArrayList<Integer> cohorts;
+
         @Override
         public void run() {
             // TODO Auto-generated method stub
@@ -94,16 +108,16 @@ public class Protocol {
             synchronized (LLR) {
                 tentativeCheckpoint = new LocalState(sendLabels, FLS, LLR);
                 cohorts = new ArrayList<Integer>();
-                
+
                 // get cohorts and set LLR & FLS to ground
-                for (Integer k: LLR.keySet()) {
+                for (Integer k : LLR.keySet()) {
                     if (LLR.get(k) != Integer.MIN_VALUE) {
                         cohorts.add(k);
                         LLR.put(k, Integer.MIN_VALUE);
                     }
                 }
             }
-            
+
             boolean commit = sendRequestToCohorts(tentativeCheckpoint, cohorts);
 
             // commit after receving responses
@@ -115,23 +129,28 @@ public class Protocol {
         public boolean sendRequestToCohorts(LocalState ck, ArrayList<Integer> cohorts) {
 
             // request cohorts to take checkpoint
-            for (Integer c: cohorts) {
+            for (Integer c : cohorts) {
                 try {
-                    client.sendMessage(currentNode.neighbors.get(c), new Message(MessageType.TENTATIVE_CK, "requesting to take tentative checkpoint", currentNode.ID));
+                    sentRequests.incrementAndGet();
+                    client.sendMessage(currentNode.neighbors.get(c), new Message(MessageType.TAKE_TENTATIVE_CK,
+                            "requesting to take tentative checkpoint", currentNode.ID, ck.LLR.get(c)));
                 } catch (Exception e) {
                     // TODO Auto-generated catch block
                     e.printStackTrace();
                 }
             }
 
-            
             // await until you receive decision
+            while (awaitResult.get()) {
+                // once inside, received all decision from cohort
+                awaitResult.set(Boolean.TRUE);
+            }
 
-            return false;
+            return willingToCheckPoint.get();
         }
 
         public void commitCheckpoints() {
-
+            // send commit message to all cohorts that took tentative checkpoint
         }
     }
 
@@ -162,7 +181,7 @@ public class Protocol {
                         }
                         sendLabels.put(randomNeighbor.ID, newLabelValue);
                         client.sendMessage(randomNeighbor,
-                                new Message(MessageType.APPLICATION, "sending app message", currentNode.ID));
+                                new Message(MessageType.APPLICATION, "sending app message", currentNode.ID, 0));
                     } catch (Exception e) {
                         // TODO Auto-generated catch block
                         e.printStackTrace();

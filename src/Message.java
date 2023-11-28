@@ -7,7 +7,7 @@ import java.io.ByteArrayOutputStream;
 
 // Enumeration to store message types
 enum MessageType {
-	APPLICATION, TENTATIVE_CK, COMMIT, RECOVER, ROLLBACK
+	APPLICATION, TAKE_TENTATIVE_CK, WILLING_TO_CK, NOT_WILLING_TO_CK, COMMIT, RECOVER, ROLLBACK
 };
 
 // Object to store message passing between nodes
@@ -19,12 +19,14 @@ public class Message implements Serializable {
 	MessageType msgType;
 	public String message;
 	int NodeID;
+	int piggyback_LLR;
 
 	// Constructor
-	public Message(MessageType msgType, String message, int NodeID) {
+	public Message(MessageType msgType, String message, int NodeID, int piggyback_LLR) {
 		this.msgType = msgType;
 		this.message = message;
 		this.NodeID = NodeID;
+		this.piggyback_LLR = piggyback_LLR;
 	}
 
 	// Convert current instance of Message to ByteBuffer in order to send message

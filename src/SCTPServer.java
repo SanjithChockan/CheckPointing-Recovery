@@ -11,9 +11,11 @@ public class SCTPServer implements Runnable {
 
 	// Size of ByteBuffer to accept incoming messages
 	int MAX_MSG_SIZE = 4096;
+	Protocol service;
 
-	public SCTPServer(int PORT) {
+	public SCTPServer(int PORT, Protocol service) {
 		this.PORT = PORT;
+		this.service = service;
 	}
 
 	public void start() throws Exception {
@@ -67,6 +69,9 @@ public class SCTPServer implements Runnable {
 					sc.receive(buf, null, null);
 					Message rcvMsg = Message.fromByteBuffer(buf);
 					
+					synchronized (service) {
+						service.processReceivedMessage(rcvMsg);
+					}
 					
 
 				}

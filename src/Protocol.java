@@ -38,11 +38,10 @@ public class Protocol {
     // add local state to list everytime you make a perm checkpoint
     ArrayList<LocalState> permCheckpoints = new ArrayList<LocalState>();
 
-
     public Protocol(Node currentNode, ArrayList<Action> operations) throws Exception {
         this.currentNode = currentNode;
         this.operations = operations;
-        this.server = new SCTPServer(currentNode.port);
+        this.server = new SCTPServer(currentNode.port, this);
         this.client = new SCTPClient(this.currentNode.neighbors);
         initialize();
         initialize();
@@ -74,10 +73,41 @@ public class Protocol {
 
     public void processReceivedMessage(Message msg) {
         // process application message
+        if (msg.msgType == MessageType.APPLICATION) {
+            // increment LLR on corresponding process
+            LLR.put(msg.NodeID, msg.piggyback_LLR);
+
+        }
+
+        else if (msg.msgType == MessageType.TAKE_TENTATIVE_CK) {
+            // if LLR >= FLS > ground
+            if (msg.piggyback_LLR >= FLS.get(msg.NodeID) && FLS.get(msg.NodeID) != Integer.MIN_VALUE) {
+                new Thread(new Checkpoint()).start();
+            }
+            else {
+                // send willing_to_ck
+                try {
+                    client.sendMessage(currentNode.neighbors.get(msg.NodeID), new Message(MessageType.WILLING_TO_CK, "not required to take ck", currentNode.ID, 0));
+                } catch (Exception e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
+            }
+        }
 
         // process willing_to_ck: "yes" or "no" (true or false) to checkpoint message
+        else if (msg.msgType == MessageType.WILLING_TO_CK) {
+            willingToCheckPoint.set(Boolean.TRUE);
+        }
+
+        else if (msg.msgType == MessageType.NOT_WILLING_TO_CK) {
+            willingToCheckPoint.set(Boolean.FALSE);
+        }
 
         // process commit message
+        else if (msg.msgType == MessageType.COMMIT) {
+            // make tentative checkpoint permanent
+        }
 
     }
 

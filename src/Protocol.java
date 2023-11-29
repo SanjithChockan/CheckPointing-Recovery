@@ -82,12 +82,12 @@ public class Protocol {
         else if (msg.msgType == MessageType.TAKE_TENTATIVE_CK) {
             // if LLR >= FLS > ground
             if (msg.piggyback_LLR >= FLS.get(msg.NodeID) && FLS.get(msg.NodeID) != Integer.MIN_VALUE) {
-                new Thread(new Checkpoint()).start();
-            }
-            else {
+                new Thread(new Checkpoint(msg.NodeID)).start();
+            } else {
                 // send willing_to_ck
                 try {
-                    client.sendMessage(currentNode.neighbors.get(msg.NodeID), new Message(MessageType.WILLING_TO_CK, "not required to take ck", currentNode.ID, 0));
+                    client.sendMessage(currentNode.neighbors.get(msg.NodeID),
+                            new Message(MessageType.WILLING_TO_CK, "not required to take ck", currentNode.ID, 0));
                 } catch (Exception e) {
                     // TODO Auto-generated catch block
                     e.printStackTrace();
@@ -127,6 +127,11 @@ public class Protocol {
     class Checkpoint implements Runnable {
 
         ArrayList<Integer> cohorts;
+        int initiator;
+
+        public Checkpoint(int initiator) {
+            this.initiator = initiator;
+        }
 
         @Override
         public void run() {
@@ -155,17 +160,27 @@ public class Protocol {
                 }
             }
 
-            boolean commit = sendRequestToCohorts(tentativeCheckpoint, cohorts);
-
-            // commit after receving responses
-            if (commit) {
-                commitCheckpoints();
+            boolean willing_to_ck = sendRequestToCohorts(tentativeCheckpoint, cohorts);
+            // send willing_to_ck to initiator
+            try {
+                if (willing_to_ck) {
+                    client.sendMessage(currentNode.neighbors.get(initiator),
+                            new Message(MessageType.WILLING_TO_CK, "null", currentNode.ID, 0));
+                } else {
+                    client.sendMessage(currentNode.neighbors.get(initiator),
+                            new Message(MessageType.NOT_WILLING_TO_CK, "null", currentNode.ID, 0));
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
             }
+            
+            // wait for commit message from intiator
+
         }
 
         public boolean sendRequestToCohorts(LocalState ck, ArrayList<Integer> cohorts) {
 
-            // request cohorts to take checkpoint
+            // request cohorts to take checkpoint, don't send to initator (add logic)
             for (Integer c : cohorts) {
                 try {
                     sentRequests.incrementAndGet();

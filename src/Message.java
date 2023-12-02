@@ -1,5 +1,6 @@
 import java.io.Serializable;
 import java.nio.ByteBuffer;
+import java.util.HashSet;
 import java.io.ObjectOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ByteArrayInputStream;
@@ -20,13 +21,15 @@ public class Message implements Serializable {
 	public String message;
 	int NodeID;
 	int piggyback_LLR;
+	HashSet<Integer> parents;
 
 	// Constructor
-	public Message(MessageType msgType, String message, int NodeID, int piggyback_LLR) {
+	public Message(MessageType msgType, String message, int NodeID, int piggyback_LLR, HashSet<Integer> parents) {
 		this.msgType = msgType;
 		this.message = message;
 		this.NodeID = NodeID;
 		this.piggyback_LLR = piggyback_LLR;
+		this.parents = parents;
 	}
 
 	// Convert current instance of Message to ByteBuffer in order to send message

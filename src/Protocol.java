@@ -10,6 +10,7 @@
  */
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -82,12 +83,12 @@ public class Protocol {
         else if (msg.msgType == MessageType.TAKE_TENTATIVE_CK) {
             // if LLR >= FLS > ground
             if (msg.piggyback_LLR >= FLS.get(msg.NodeID) && FLS.get(msg.NodeID) != Integer.MIN_VALUE) {
-                new Thread(new Checkpoint(msg.NodeID)).start();
+                new Thread(new Checkpoint(msg.NodeID, null)).start();
             } else {
                 // send willing_to_ck
                 try {
                     client.sendMessage(currentNode.neighbors.get(msg.NodeID),
-                            new Message(MessageType.WILLING_TO_CK, "not required to take ck", currentNode.ID, 0));
+                            new Message(MessageType.WILLING_TO_CK, "not required to take ck", currentNode.ID, 0, null));
                 } catch (Exception e) {
                     // TODO Auto-generated catch block
                     e.printStackTrace();
@@ -128,9 +129,12 @@ public class Protocol {
 
         ArrayList<Integer> cohorts;
         int initiator;
+        HashSet<Integer> parents = new HashSet<Integer>();
 
-        public Checkpoint(int initiator) {
+        public Checkpoint(int initiator, HashSet<Integer> parents) {
             this.initiator = initiator;
+            this.parents = parents;
+            parents.add(initiator);
         }
 
         @Override
@@ -152,6 +156,7 @@ public class Protocol {
                 cohorts = new ArrayList<Integer>();
 
                 // get cohorts and set LLR & FLS to ground
+                // only send to cohorts that are not parents (initiators)
                 for (Integer k : LLR.keySet()) {
                     if (LLR.get(k) != Integer.MIN_VALUE) {
                         cohorts.add(k);
@@ -167,10 +172,10 @@ public class Protocol {
                 try {
                     if (willing_to_ck) {
                         client.sendMessage(currentNode.neighbors.get(initiator),
-                                new Message(MessageType.WILLING_TO_CK, "null", currentNode.ID, 0));
+                                new Message(MessageType.WILLING_TO_CK, "null", currentNode.ID, 0, null));
                     } else {
                         client.sendMessage(currentNode.neighbors.get(initiator),
-                                new Message(MessageType.NOT_WILLING_TO_CK, "null", currentNode.ID, 0));
+                                new Message(MessageType.NOT_WILLING_TO_CK, "null", currentNode.ID, 0, null));
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -194,14 +199,17 @@ public class Protocol {
 
             // request cohorts to take checkpoint, don't send to initator (add logic)
             for (Integer c : cohorts) {
-                try {
-                    sentRequests.incrementAndGet();
-                    client.sendMessage(currentNode.neighbors.get(c), new Message(MessageType.TAKE_TENTATIVE_CK,
-                            "requesting to take tentative checkpoint", currentNode.ID, ck.LLR.get(c)));
-                } catch (Exception e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
+                if (!parents.contains(c)) {
+                    try {
+                        sentRequests.incrementAndGet();
+                        client.sendMessage(currentNode.neighbors.get(c), new Message(MessageType.TAKE_TENTATIVE_CK,
+                                "requesting to take tentative checkpoint", currentNode.ID, ck.LLR.get(c), parents));
+                    } catch (Exception e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
                 }
+
             }
 
             // await until you receive decision
@@ -214,7 +222,8 @@ public class Protocol {
         }
 
         public void commitCheckpoints() {
-            // send commit message to all cohorts that took tentative checkpoint
+            // make checkpoints permanent & send commit message to all cohorts that took
+            // tentative checkpoint
         }
     }
 
@@ -245,7 +254,7 @@ public class Protocol {
                         }
                         sendLabels.put(randomNeighbor.ID, newLabelValue);
                         client.sendMessage(randomNeighbor,
-                                new Message(MessageType.APPLICATION, "sending app message", currentNode.ID, 0));
+                                new Message(MessageType.APPLICATION, "sending app message", currentNode.ID, 0, null));
                     } catch (Exception e) {
                         // TODO Auto-generated catch block
                         e.printStackTrace();

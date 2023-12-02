@@ -162,19 +162,31 @@ public class Protocol {
 
             boolean willing_to_ck = sendRequestToCohorts(tentativeCheckpoint, cohorts);
             // send willing_to_ck to initiator
-            try {
-                if (willing_to_ck) {
-                    client.sendMessage(currentNode.neighbors.get(initiator),
-                            new Message(MessageType.WILLING_TO_CK, "null", currentNode.ID, 0));
-                } else {
-                    client.sendMessage(currentNode.neighbors.get(initiator),
-                            new Message(MessageType.NOT_WILLING_TO_CK, "null", currentNode.ID, 0));
+
+            if (initiator != currentNode.ID) {
+                try {
+                    if (willing_to_ck) {
+                        client.sendMessage(currentNode.neighbors.get(initiator),
+                                new Message(MessageType.WILLING_TO_CK, "null", currentNode.ID, 0));
+                    } else {
+                        client.sendMessage(currentNode.neighbors.get(initiator),
+                                new Message(MessageType.NOT_WILLING_TO_CK, "null", currentNode.ID, 0));
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
+
+                // wait for either commit or don't commit message
+
+            } else {
+                // if initiator, commit checkpoint if willing_to_ck == true
+                if (willing_to_ck) {
+                    commitCheckpoints();
+                } else {
+                    // discard checkpoints
+                }
+
             }
-            
-            // wait for commit message from intiator
 
         }
 

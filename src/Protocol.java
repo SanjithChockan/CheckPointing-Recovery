@@ -35,9 +35,11 @@ public class Protocol {
     AtomicInteger sentRequests = new AtomicInteger();
     AtomicBoolean awaitResult = new AtomicBoolean(Boolean.TRUE);
     AtomicBoolean willingToCheckPoint = new AtomicBoolean(Boolean.TRUE);
+    AtomicBoolean receivedCommitDecision = new AtomicBoolean(Boolean.FALSE);
 
     // add local state to list everytime you make a perm checkpoint
     ArrayList<LocalState> permCheckpoints = new ArrayList<LocalState>();
+    LocalState tentativeCheckpoint;
 
     public Protocol(Node currentNode, ArrayList<Action> operations) throws Exception {
         this.currentNode = currentNode;
@@ -129,12 +131,14 @@ public class Protocol {
 
         ArrayList<Integer> cohorts;
         int initiator;
+
         HashSet<Integer> parents = new HashSet<Integer>();
 
         public Checkpoint(int initiator, HashSet<Integer> parents) {
             this.initiator = initiator;
             this.parents = parents;
             parents.add(initiator);
+            tentativeCheckpoint = null;
         }
 
         @Override
@@ -149,7 +153,7 @@ public class Protocol {
         }
 
         public void takeTentativeCK() {
-            LocalState tentativeCheckpoint;
+            
             // take local checkpoint
             synchronized (LLR) {
                 tentativeCheckpoint = new LocalState(sendLabels, FLS, LLR);
@@ -182,6 +186,9 @@ public class Protocol {
                 }
 
                 // wait for either commit or don't commit message
+                while (!receivedCommitDecision.get()) {
+
+                }
 
             } else {
                 // if initiator, commit checkpoint if willing_to_ck == true
@@ -222,8 +229,10 @@ public class Protocol {
         }
 
         public void commitCheckpoints() {
-            // make checkpoints permanent & send commit message to all cohorts that took
-            // tentative checkpoint
+            // make checkpoint permanent & send commit message to all cohorts that took
+            permCheckpoints.add(tentativeCheckpoint);
+
+
         }
     }
 

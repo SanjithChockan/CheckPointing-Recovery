@@ -19,6 +19,9 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class Protocol {
 
+    int minDelay;
+    int actionIndex = 0;
+
     SCTPServer server;
     SCTPClient client;
     Node currentNode;
@@ -36,12 +39,16 @@ public class Protocol {
     AtomicBoolean awaitResult = new AtomicBoolean(Boolean.TRUE);
     AtomicBoolean willingToCheckPoint = new AtomicBoolean(Boolean.TRUE);
     AtomicBoolean receivedCommitDecision = new AtomicBoolean(Boolean.FALSE);
+    AtomicBoolean makeCheckpointPermanent = new AtomicBoolean(Boolean.FALSE);
+    AtomicBoolean instanceInProgress = new AtomicBoolean(Boolean.TRUE);
+    AtomicBoolean receivedMoveOnMessage = new AtomicBoolean(Boolean.FALSE);
 
     // add local state to list everytime you make a perm checkpoint
     ArrayList<LocalState> permCheckpoints = new ArrayList<LocalState>();
     LocalState tentativeCheckpoint;
 
-    public Protocol(Node currentNode, ArrayList<Action> operations) throws Exception {
+    public Protocol(Node currentNode, ArrayList<Action> operations, int minDelay) throws Exception {
+        this.minDelay = minDelay;
         this.currentNode = currentNode;
         this.operations = operations;
         this.server = new SCTPServer(currentNode.port, this);
@@ -59,6 +66,34 @@ public class Protocol {
 
     public void startProtcol() {
         // iterate through operations (checkpointing/recovery)
+        try {
+            Thread.sleep(minDelay);
+        } catch (InterruptedException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+
+        int iter = 0;
+        while (iter < operations.size()) {
+            Action op = operations.get(iter);
+            if (op.initiator.ID == currentNode.ID) {
+                if (op.mode.equals("c")) {
+
+                    instanceInProgress.set(true);
+                    new Thread(new Checkpoint(0, null)).start();
+                    while (instanceInProgress.get()) {};
+                    // inform other processes that your are done with your instance using flooding
+                }
+            }
+
+            else {
+                // wait until current instance is done before moving on to next operation
+                while (!receivedMoveOnMessage.get()) {};
+                iter += 1;
+                receivedMoveOnMessage.set(false);
+
+            }
+        }
     }
 
     public void initialize() {
@@ -110,6 +145,13 @@ public class Protocol {
         // process commit message
         else if (msg.msgType == MessageType.COMMIT) {
             // make tentative checkpoint permanent
+            permCheckpoints.add(tentativeCheckpoint);
+            receivedCommitDecision.set(true);
+        }
+
+        // process move on to next operation message
+        else if (msg.msgType == MessageType.MOVE_ON) {
+            receivedMoveOnMessage.set(Boolean.TRUE);
         }
 
     }
@@ -131,7 +173,6 @@ public class Protocol {
 
         ArrayList<Integer> cohorts;
         int initiator;
-
         HashSet<Integer> parents = new HashSet<Integer>();
 
         public Checkpoint(int initiator, HashSet<Integer> parents) {
@@ -139,6 +180,7 @@ public class Protocol {
             this.parents = parents;
             parents.add(initiator);
             tentativeCheckpoint = null;
+            receivedCommitDecision.set(false);
         }
 
         @Override
@@ -153,7 +195,7 @@ public class Protocol {
         }
 
         public void takeTentativeCK() {
-            
+
             // take local checkpoint
             synchronized (LLR) {
                 tentativeCheckpoint = new LocalState(sendLabels, FLS, LLR);
@@ -169,7 +211,7 @@ public class Protocol {
                 }
             }
 
-            boolean willing_to_ck = sendRequestToCohorts(tentativeCheckpoint, cohorts);
+            boolean willing_to_ck = sendRequestToCohorts(cohorts);
             // send willing_to_ck to initiator
 
             if (initiator != currentNode.ID) {
@@ -202,7 +244,7 @@ public class Protocol {
 
         }
 
-        public boolean sendRequestToCohorts(LocalState ck, ArrayList<Integer> cohorts) {
+        public boolean sendRequestToCohorts(ArrayList<Integer> cohorts) {
 
             // request cohorts to take checkpoint, don't send to initator (add logic)
             for (Integer c : cohorts) {
@@ -210,7 +252,8 @@ public class Protocol {
                     try {
                         sentRequests.incrementAndGet();
                         client.sendMessage(currentNode.neighbors.get(c), new Message(MessageType.TAKE_TENTATIVE_CK,
-                                "requesting to take tentative checkpoint", currentNode.ID, ck.LLR.get(c), parents));
+                                "requesting to take tentative checkpoint", currentNode.ID,
+                                tentativeCheckpoint.LLR.get(c), parents));
                     } catch (Exception e) {
                         // TODO Auto-generated catch block
                         e.printStackTrace();
@@ -232,6 +275,21 @@ public class Protocol {
             // make checkpoint permanent & send commit message to all cohorts that took
             permCheckpoints.add(tentativeCheckpoint);
 
+            // tell eligible cohorts to make tentative ck permanent
+            for (Integer c : cohorts) {
+                if (!parents.contains(c)) {
+                    try {
+                        sentRequests.incrementAndGet();
+                        client.sendMessage(currentNode.neighbors.get(c), new Message(MessageType.COMMIT,
+                                "requesting to take tentative checkpoint", currentNode.ID,
+                                tentativeCheckpoint.LLR.get(c), parents));
+                    } catch (Exception e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
+                }
+
+            }
 
         }
     }

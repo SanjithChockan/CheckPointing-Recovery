@@ -18,6 +18,8 @@ public class Main {
         readFile(fileName);
         printInfo(Integer.parseInt(args[0]));
 
+        Protocol protocolObj = new Protocol(currentNode, operations, minDelay);
+
     }
 
     public static void printInfo(int machineNum) {

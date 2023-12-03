@@ -8,7 +8,7 @@ import java.io.ByteArrayOutputStream;
 
 // Enumeration to store message types
 enum MessageType {
-	APPLICATION, TAKE_TENTATIVE_CK, WILLING_TO_CK, NOT_WILLING_TO_CK, COMMIT, RECOVER, ROLLBACK
+	APPLICATION, TAKE_TENTATIVE_CK, WILLING_TO_CK, NOT_WILLING_TO_CK, COMMIT, RECOVER, ROLLBACK, MOVE_ON
 };
 
 // Object to store message passing between nodes

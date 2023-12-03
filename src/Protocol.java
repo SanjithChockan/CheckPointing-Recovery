@@ -11,6 +11,7 @@
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -42,6 +43,7 @@ public class Protocol {
     AtomicBoolean makeCheckpointPermanent = new AtomicBoolean(Boolean.FALSE);
     AtomicBoolean instanceInProgress = new AtomicBoolean(Boolean.TRUE);
     AtomicBoolean receivedMoveOnMessage = new AtomicBoolean(Boolean.FALSE);
+    AtomicBoolean hasTakenTentativeCk = new AtomicBoolean(Boolean.FALSE);
 
     // add local state to list everytime you make a perm checkpoint
     ArrayList<LocalState> permCheckpoints = new ArrayList<LocalState>();
@@ -78,17 +80,21 @@ public class Protocol {
             Action op = operations.get(iter);
             if (op.initiator.ID == currentNode.ID) {
                 if (op.mode.equals("c")) {
-
+                    System.out.println("Checkpoint initiated by: " + currentNode.ID);
                     instanceInProgress.set(true);
-                    new Thread(new Checkpoint(0, null)).start();
-                    while (instanceInProgress.get()) {};
+                    new Thread(new Checkpoint(0, new HashSet<Integer>())).start();
+                    while (instanceInProgress.get()) {
+                    }
+                    ;
                     // inform other processes that your are done with your instance using flooding
                 }
             }
 
             else {
                 // wait until current instance is done before moving on to next operation
-                while (!receivedMoveOnMessage.get()) {};
+                while (!receivedMoveOnMessage.get()) {
+                }
+                ;
                 iter += 1;
                 receivedMoveOnMessage.set(false);
 
@@ -113,24 +119,34 @@ public class Protocol {
         // process application message
         if (msg.msgType == MessageType.APPLICATION) {
             // increment LLR on corresponding process
-            LLR.put(msg.NodeID, msg.piggyback_LLR);
+            synchronized (LLR) {
+                LLR.put(msg.NodeID, msg.piggyback_LLR);
+            }
 
         }
 
         else if (msg.msgType == MessageType.TAKE_TENTATIVE_CK) {
-            // if LLR >= FLS > ground
-            if (msg.piggyback_LLR >= FLS.get(msg.NodeID) && FLS.get(msg.NodeID) != Integer.MIN_VALUE) {
-                new Thread(new Checkpoint(msg.NodeID, null)).start();
-            } else {
-                // send willing_to_ck
-                try {
-                    client.sendMessage(currentNode.neighbors.get(msg.NodeID),
-                            new Message(MessageType.WILLING_TO_CK, "not required to take ck", currentNode.ID, 0, null));
-                } catch (Exception e) {
-                    // TODO Auto-generated catch block
-                    e.printStackTrace();
+
+            System.out.println("Received to take tentative ck");
+            if (!hasTakenTentativeCk.get()) {
+                // if LLR >= FLS > ground
+                if (msg.piggyback_LLR >= FLS.get(msg.NodeID) && FLS.get(msg.NodeID) != Integer.MIN_VALUE) {
+                    System.out.println("Taking tentative ck");
+                    new Thread(new Checkpoint(msg.NodeID, msg.parents)).start();
+                } else {
+                    System.out.println("not taking tentative ck");
+                    // send willing_to_ck
+                    try {
+                        client.sendMessage(currentNode.neighbors.get(msg.NodeID),
+                                new Message(MessageType.WILLING_TO_CK, "not required to take ck", currentNode.ID, 0,
+                                        null));
+                    } catch (Exception e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
                 }
             }
+
         }
 
         // process willing_to_ck: "yes" or "no" (true or false) to checkpoint message
@@ -146,6 +162,7 @@ public class Protocol {
         else if (msg.msgType == MessageType.COMMIT) {
             // make tentative checkpoint permanent
             permCheckpoints.add(tentativeCheckpoint);
+            hasTakenTentativeCk.set(false);
             receivedCommitDecision.set(true);
         }
 
@@ -173,12 +190,12 @@ public class Protocol {
 
         ArrayList<Integer> cohorts;
         int initiator;
-        HashSet<Integer> parents = new HashSet<Integer>();
+        HashSet<Integer> parents;
 
         public Checkpoint(int initiator, HashSet<Integer> parents) {
             this.initiator = initiator;
             this.parents = parents;
-            parents.add(initiator);
+            this.parents.add(initiator);
             tentativeCheckpoint = null;
             receivedCommitDecision.set(false);
         }
@@ -187,18 +204,25 @@ public class Protocol {
         public void run() {
             // TODO Auto-generated method stub
             sendMessageLock.lock();
+            System.out.println("Starting checkpoint");
             try {
                 takeTentativeCK();
             } finally {
                 sendMessageLock.unlock();
             }
+            System.out.println("Completed checkpoint");
         }
 
         public void takeTentativeCK() {
 
+            System.out.println("At takeTentativeCK() method");
+
             // take local checkpoint
             synchronized (LLR) {
                 tentativeCheckpoint = new LocalState(sendLabels, FLS, LLR);
+
+                hasTakenTentativeCk.set(true);
+
                 cohorts = new ArrayList<Integer>();
 
                 // get cohorts and set LLR & FLS to ground
@@ -245,7 +269,7 @@ public class Protocol {
         }
 
         public boolean sendRequestToCohorts(ArrayList<Integer> cohorts) {
-
+            System.out.println("at sendRequestToCohorts()");
             // request cohorts to take checkpoint, don't send to initator (add logic)
             for (Integer c : cohorts) {
                 if (!parents.contains(c)) {
@@ -262,6 +286,10 @@ public class Protocol {
 
             }
 
+            System.out.println("Sent requests to cohorts, waiting for decision from neighbors");
+
+            // IMPLEMENT RECEVICE DECISION. TAKE CARE OF CASE WHERE NO MESSAGES ARE SENT TO COHORTS
+
             // await until you receive decision
             while (awaitResult.get()) {
                 // once inside, received all decision from cohort
@@ -274,6 +302,7 @@ public class Protocol {
         public void commitCheckpoints() {
             // make checkpoint permanent & send commit message to all cohorts that took
             permCheckpoints.add(tentativeCheckpoint);
+            hasTakenTentativeCk.set(false);
 
             // tell eligible cohorts to make tentative ck permanent
             for (Integer c : cohorts) {
@@ -306,13 +335,14 @@ public class Protocol {
         }
 
         public void sendApplicationMessages() {
+            List<Integer> keysAsArray = new ArrayList<Integer>(currentNode.neighbors.keySet());
             Random rand = new Random();
 
             while (true) {
                 // pick random neighbor and send message
                 sendMessageLock.lock();
                 try {
-                    Node randomNeighbor = currentNode.neighbors.get(rand.nextInt(currentNode.neighbors.size()));
+                    Node randomNeighbor = currentNode.neighbors.get(keysAsArray.get(rand.nextInt(keysAsArray.size())));
                     try {
                         int newLabelValue = sendLabels.get(randomNeighbor.ID) + 1;
                         // set FLS if no message has been sent since last checkpoint

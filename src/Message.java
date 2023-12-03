@@ -23,6 +23,7 @@ public class Message implements Serializable {
 	int piggyback_LLR;
 	HashSet<Integer> parents;
 
+
 	// Constructor
 	public Message(MessageType msgType, String message, int NodeID, int piggyback_LLR, HashSet<Integer> parents) {
 		this.msgType = msgType;

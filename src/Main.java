@@ -20,6 +20,8 @@ public class Main {
 
         Protocol protocolObj = new Protocol(currentNode, operations, minDelay);
 
+        protocolObj.startProtcol();
+
     }
 
     public static void printInfo(int machineNum) {

@@ -50,7 +50,6 @@ public class Protocol {
     AtomicBoolean hasTakenTentativeCk = new AtomicBoolean(Boolean.FALSE);
     AtomicBoolean alreadyReceivedToCommit = new AtomicBoolean(Boolean.FALSE);
     AtomicBoolean alreadyReceivedMoveOnMessage = new AtomicBoolean(Boolean.FALSE);
-    
 
     // add local state to list everytime you make a perm checkpoint
     ArrayList<LocalState> permCheckpoints = new ArrayList<LocalState>();
@@ -79,7 +78,7 @@ public class Protocol {
 
         int iter = 0;
         while (iter < operations.size()) {
-            
+
             alreadyReceivedMoveOnMessage.set(false);
             Action op = operations.get(iter);
             if (op.initiator.ID == currentNode.ID) {
@@ -205,30 +204,49 @@ public class Protocol {
                     permCheckpoints.add(tentativeCheckpoint);
                     hasTakenTentativeCk.set(false);
                     receivedCommitDecision.set(true);
-
-                    // flood commit message to neighbors
-                    HashSet<Integer> parents = msg.parents;
-                    parents.add(currentNode.ID);
-
-                    for (Integer nei: currentNode.neighbors.keySet()) {
-                        if (!parents.contains(nei)) {
-                            try {
-                                client.sendMessage(currentNode.neighbors.get(nei), new Message(MessageType.COMMIT, "", currentNode.ID, 0, parents));
-                            } catch (Exception e) {
-                                // TODO Auto-generated catch block
-                                e.printStackTrace();
-                            }
-                        }
-                    }
-                    
                 }
 
                 else {
                     System.out.println("Did not take tentative ck - no permanent checkpoint");
                 }
+
+                // flood commit message to neighbors
+                HashSet<Integer> parents = msg.parents;
+                parents.add(currentNode.ID);
+
+                int localSentCommitMessages = 0;
+                for (Integer nei : currentNode.neighbors.keySet()) {
+                    if (!parents.contains(nei)) {
+                        try {
+                            localSentCommitMessages++;
+                            sentCommit.incrementAndGet();
+                            client.sendMessage(currentNode.neighbors.get(nei),
+                                    new Message(MessageType.COMMIT, "", currentNode.ID, 0, parents));
+                        } catch (Exception e) {
+                            // TODO Auto-generated catch block
+                            e.printStackTrace();
+                        }
+                    }
+                }
+
+                // wait for ackowledgement
+                if (localSentCommitMessages > 0) {
+                    while (!acknowledgementReceived.get()) {
+                    }
+                }
+
+                // send acknowledge message to parent
+                try {
+                    client.sendMessage(currentNode.neighbors.get(msg.NodeID), new Message(MessageType.ACKNOWLEDGE, null, currentNode.ID, 0, parents));
+                }
+                catch (Exception e){
+
+                }
+
             }
         }
 
+        // only for initiator to end its current instance
         else if (msg.msgType == MessageType.ACKNOWLEDGE) {
             sentCommit.decrementAndGet();
             if (sentCommit.get() == 0) {
@@ -260,7 +278,6 @@ public class Protocol {
                 receivedMoveOnMessage.set(Boolean.TRUE);
             }
         }
-
 
     }
 
@@ -406,7 +423,8 @@ public class Protocol {
             // make checkpoint permanent & send commit message to all cohorts that took
             permCheckpoints.add(tentativeCheckpoint);
 
-            // send all neighbors (flood) to commit if they have taken a tentative checkpoint
+            // send all neighbors (flood) to commit if they have taken a tentative
+            // checkpoint
             for (Integer c : currentNode.neighbors.keySet()) {
                 if (!parents.contains(c)) {
                     try {
@@ -422,7 +440,8 @@ public class Protocol {
                 }
             }
 
-            // wait for neighbors to acknowledge completion of instance; every should have taken permanent checkpoint before exiting initiator instance
+            // wait for neighbors to acknowledge completion of instance; every should have
+            // taken permanent checkpoint before exiting initiator instance
             while (!acknowledgementReceived.get()) {
             }
         }

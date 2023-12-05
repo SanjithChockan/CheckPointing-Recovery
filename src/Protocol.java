@@ -36,20 +36,21 @@ public class Protocol {
     // if initiator, don't need to check LLR >= FLS > ground
     AtomicBoolean initiator = new AtomicBoolean(Boolean.TRUE);
 
+    // variables for checkpointing
     AtomicInteger sentCommit = new AtomicInteger();
     AtomicBoolean acknowledgementReceived = new AtomicBoolean(Boolean.FALSE);
-
     AtomicInteger sentRequests = new AtomicInteger();
     AtomicBoolean awaitResult = new AtomicBoolean(Boolean.TRUE);
-
     AtomicBoolean willingToCheckPoint = new AtomicBoolean(Boolean.TRUE);
     AtomicBoolean receivedCommitDecision = new AtomicBoolean(Boolean.FALSE);
     AtomicBoolean makeCheckpointPermanent = new AtomicBoolean(Boolean.FALSE);
     AtomicBoolean instanceInProgress = new AtomicBoolean(Boolean.TRUE);
-    AtomicBoolean receivedMoveOnMessage = new AtomicBoolean(Boolean.FALSE);
     AtomicBoolean hasTakenTentativeCk = new AtomicBoolean(Boolean.FALSE);
     AtomicBoolean alreadyReceivedToCommit = new AtomicBoolean(Boolean.FALSE);
+
+    // variables to move on to next operation
     AtomicBoolean alreadyReceivedMoveOnMessage = new AtomicBoolean(Boolean.FALSE);
+    AtomicBoolean receivedMoveOnMessage = new AtomicBoolean(Boolean.FALSE);
 
     // add local state to list everytime you make a perm checkpoint
     ArrayList<LocalState> permCheckpoints = new ArrayList<LocalState>();
@@ -79,7 +80,6 @@ public class Protocol {
         int iter = 0;
         while (iter < operations.size()) {
 
-            alreadyReceivedMoveOnMessage.set(false);
             Action op = operations.get(iter);
             if (op.initiator.ID == currentNode.ID) {
                 try {
@@ -159,6 +159,7 @@ public class Protocol {
                 // if LLR >= FLS > ground
                 if ((msg.piggyback_LLR >= FLS.get(msg.NodeID)) && (FLS.get(msg.NodeID) > Integer.MIN_VALUE)) {
                     System.out.println("Taking tentative ck");
+                    hasTakenTentativeCk.set(true);
                     new Thread(new Checkpoint(msg.NodeID, msg.parents)).start();
                 } else {
                     System.out.println("not taking tentative ck");
@@ -171,6 +172,16 @@ public class Protocol {
                         // TODO Auto-generated catch block
                         e.printStackTrace();
                     }
+                }
+            } else {
+                System.out.println("Already taken tentative checkpoint");
+                try {
+                    client.sendMessage(currentNode.neighbors.get(msg.NodeID),
+                            new Message(MessageType.WILLING_TO_CK, "already took ck", currentNode.ID, 0,
+                                    null));
+                } catch (Exception e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
                 }
             }
 
@@ -195,6 +206,9 @@ public class Protocol {
         // process commit message
         else if (msg.msgType == MessageType.COMMIT) {
 
+            HashSet<Integer> parents = msg.parents;
+            parents.add(currentNode.ID);
+
             if (!receivedCommitDecision.get()) {
                 receivedCommitDecision.set(true);
                 System.out.println("Received message to make checkpoint permanent");
@@ -204,6 +218,7 @@ public class Protocol {
                     permCheckpoints.add(tentativeCheckpoint);
                     hasTakenTentativeCk.set(false);
                     receivedCommitDecision.set(true);
+                    tentativeCheckpoint = null;
                 }
 
                 else {
@@ -211,8 +226,6 @@ public class Protocol {
                 }
 
                 // flood commit message to neighbors
-                HashSet<Integer> parents = msg.parents;
-                parents.add(currentNode.ID);
 
                 int localSentCommitMessages = 0;
                 for (Integer nei : currentNode.neighbors.keySet()) {
@@ -220,6 +233,7 @@ public class Protocol {
                         try {
                             localSentCommitMessages++;
                             sentCommit.incrementAndGet();
+                            System.out.println("SENDING MESSAGE TO COMMIT TO MACHINE " + nei);
                             client.sendMessage(currentNode.neighbors.get(nei),
                                     new Message(MessageType.COMMIT, "", currentNode.ID, 0, parents));
                         } catch (Exception e) {
@@ -229,28 +243,45 @@ public class Protocol {
                     }
                 }
 
-                // wait for ackowledgement
-                if (localSentCommitMessages > 0) {
-                    while (!acknowledgementReceived.get()) {
+                final int lscm = localSentCommitMessages;
+                new Thread(new Runnable() {
+                    public void run() {
+                        // wait for ackowledgement
+                        if (lscm > 0) {
+                            while (!acknowledgementReceived.get()) {
+                            }
+                        }
+                        System.out.println("RECEIVED ACKLOWDGEMENT FROM ALL NEIGHBORS");
+
+                        // send acknowledge message to parent
+                        try {
+                            System.out.println("SENDING ACKOWLEDGEMENT MESSAGE TO MACHINE " + msg.NodeID);
+                            client.sendMessage(currentNode.neighbors.get(msg.NodeID),
+                                    new Message(MessageType.ACKNOWLEDGE, null, currentNode.ID, 0, parents));
+                        } catch (Exception e) {
+
+                        }
                     }
-                }
+                }).start();
 
-                // send acknowledge message to parent
+            } else {
                 try {
-                    client.sendMessage(currentNode.neighbors.get(msg.NodeID), new Message(MessageType.ACKNOWLEDGE, null, currentNode.ID, 0, parents));
-                }
-                catch (Exception e){
+                    System.out.println("SENDING ACKOWLEDGEMENT MESSAGE TO MACHINE " + msg.NodeID);
+                    client.sendMessage(currentNode.neighbors.get(msg.NodeID),
+                            new Message(MessageType.ACKNOWLEDGE, null, currentNode.ID, 0, parents));
+                } catch (Exception e) {
 
                 }
-
             }
         }
 
         // only for initiator to end its current instance
         else if (msg.msgType == MessageType.ACKNOWLEDGE) {
+            System.out.println("RECEIVED ACKNOWLEDGEMENT FROM MACHINE " + msg.NodeID);
             sentCommit.decrementAndGet();
             if (sentCommit.get() == 0) {
                 acknowledgementReceived.set(true);
+                System.out.println("MADE ALL CHECKPOINTS PERMANENT");
             }
         }
 
@@ -308,6 +339,7 @@ public class Protocol {
             receivedCommitDecision.set(false);
             acknowledgementReceived.set(false);
             awaitResult.set(true);
+            alreadyReceivedMoveOnMessage.set(false);
         }
 
         @Override
@@ -319,7 +351,7 @@ public class Protocol {
                 takeTentativeCK();
                 instanceInProgress.set(false);
                 hasTakenTentativeCk.set(false);
-                tentativeCheckpoint = null;
+                // tentativeCheckpoint = null;
             } finally {
                 sendMessageLock.unlock();
             }
@@ -341,7 +373,6 @@ public class Protocol {
                 sendLabelsCopy.putAll(sendLabels);
 
                 tentativeCheckpoint = new LocalState(sendLabelsCopy, FLSCopy, LLRCopy);
-                hasTakenTentativeCk.set(true);
 
                 cohorts = new ArrayList<Integer>();
 
@@ -390,11 +421,13 @@ public class Protocol {
         public boolean sendRequestToCohorts() {
             System.out.println("at sendRequestToCohorts()");
             // request cohorts to take checkpoint, don't send to initator (add logic)
+            int localNumSentToCohorts = 0;
             for (Integer c : cohorts) {
                 if (!parents.contains(c)) {
                     try {
                         sentRequests.incrementAndGet();
                         System.out.println("Sending request to machine " + c + " to take a tentative checkpoint");
+                        localNumSentToCohorts++;
                         client.sendMessage(currentNode.neighbors.get(c), new Message(MessageType.TAKE_TENTATIVE_CK,
                                 "requesting to take tentative checkpoint", currentNode.ID,
                                 tentativeCheckpoint.LLR.get(c), parents));
@@ -408,7 +441,7 @@ public class Protocol {
             System.out.println("Sent requests to cohorts, waiting for decision from neighbors");
 
             // await until you receive decision
-            if (!cohorts.isEmpty()) {
+            if (localNumSentToCohorts > 0) {
                 System.out.println("Awaiting decisions from cohorts");
                 while (awaitResult.get()) {
                 }
@@ -444,6 +477,7 @@ public class Protocol {
             // taken permanent checkpoint before exiting initiator instance
             while (!acknowledgementReceived.get()) {
             }
+
         }
     }
 

@@ -46,7 +46,6 @@ public class SCTPServer implements Runnable {
 
 		SctpChannel sc;
 
-
 		// Terminal text colors
 		String RESET = "\u001B[0m";
 		String RED = "\u001B[31m";
@@ -68,12 +67,10 @@ public class SCTPServer implements Runnable {
 					ByteBuffer buf = ByteBuffer.allocateDirect(MAX_MSG_SIZE);
 					sc.receive(buf, null, null);
 					Message rcvMsg = Message.fromByteBuffer(buf);
-					
+
 					synchronized (service) {
 						service.processReceivedMessage(rcvMsg);
 					}
-					
-
 				}
 			} catch (Exception e) {
 				e.printStackTrace();

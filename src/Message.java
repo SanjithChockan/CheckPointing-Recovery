@@ -1,6 +1,8 @@
 import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.HashSet;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.io.ObjectOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ByteArrayInputStream;
@@ -22,15 +24,17 @@ public class Message implements Serializable {
 	int NodeID;
 	int piggyback_LLR;
 	HashSet<Integer> parents;
+	AtomicIntegerArray vectorClock;
 
 
 	// Constructor
-	public Message(MessageType msgType, String message, int NodeID, int piggyback_LLR, HashSet<Integer> parents) {
+	public Message(MessageType msgType, String message, int NodeID, int piggyback_LLR, HashSet<Integer> parents, AtomicIntegerArray vectorClock) {
 		this.msgType = msgType;
 		this.message = message;
 		this.NodeID = NodeID;
 		this.piggyback_LLR = piggyback_LLR;
 		this.parents = parents;
+		this.vectorClock = vectorClock;
 	}
 
 	// Convert current instance of Message to ByteBuffer in order to send message

@@ -23,6 +23,9 @@ public class LocalState {
         this.sendLabels = sendLabels;
         this.LLR = LLR;
         this.FLS = FLS;
+    }
 
+    public String toString() {
+        return vectorClock.toString();
     }
 }

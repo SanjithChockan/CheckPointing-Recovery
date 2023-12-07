@@ -16,6 +16,7 @@ import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class Protocol {
@@ -27,16 +28,18 @@ public class Protocol {
     SCTPClient client;
     Node currentNode;
     ArrayList<Action> operations;
+    AtomicIntegerArray vectorClock;
+    int nodeSize;
     Application app = new Application();
     ConcurrentHashMap<Integer, Integer> FLS = new ConcurrentHashMap<Integer, Integer>();
     ConcurrentHashMap<Integer, Integer> LLR = new ConcurrentHashMap<Integer, Integer>();
     ConcurrentHashMap<Integer, Integer> sendLabels = new ConcurrentHashMap<Integer, Integer>();
-    ReentrantLock sendMessageLock = new ReentrantLock(Boolean.TRUE);
 
     // if initiator, don't need to check LLR >= FLS > ground
     AtomicBoolean initiator = new AtomicBoolean(Boolean.TRUE);
 
     // variables for checkpointing
+    ReentrantLock sendMessageLock = new ReentrantLock(Boolean.TRUE);
     AtomicInteger sentCommit = new AtomicInteger();
     AtomicBoolean acknowledgementReceived = new AtomicBoolean(Boolean.FALSE);
     AtomicInteger sentRequests = new AtomicInteger();
@@ -56,12 +59,14 @@ public class Protocol {
     ArrayList<LocalState> permCheckpoints = new ArrayList<LocalState>();
     LocalState tentativeCheckpoint;
 
-    public Protocol(Node currentNode, ArrayList<Action> operations, int minDelay) throws Exception {
+    public Protocol(Node currentNode, ArrayList<Action> operations, int minDelay, int nodeSize) throws Exception {
         this.minDelay = minDelay;
         this.currentNode = currentNode;
         this.operations = operations;
         this.server = new SCTPServer(currentNode.port, this);
         this.client = new SCTPClient(this.currentNode.neighbors);
+        this.nodeSize = nodeSize;
+        this.vectorClock = new AtomicIntegerArray(this.nodeSize);
         initialize();
         initialize();
 
@@ -103,7 +108,7 @@ public class Protocol {
                     for (Integer i : currentNode.neighbors.keySet()) {
                         try {
                             client.sendMessage(currentNode.neighbors.get(i), new Message(MessageType.MOVE_ON,
-                                    "move to next action", currentNode.ID, -1, parents));
+                                    "move to next action", currentNode.ID, -1, parents, vectorClock));
                         } catch (Exception e) {
                             // TODO Auto-generated catch block
                             e.printStackTrace();
@@ -141,13 +146,20 @@ public class Protocol {
     }
 
     public void processReceivedMessage(Message msg) {
+
+        // received a message; updated vector clock of process sent from
+        synchronized (vectorClock) {
+            for (int i = 0; i < nodeSize; i++) {
+                vectorClock.set(i, Math.max(msg.vectorClock.get(i), this.vectorClock.get(i)));
+            }
+        }
+
         // process application message
         if (msg.msgType == MessageType.APPLICATION) {
             // increment LLR on corresponding process
             synchronized (LLR) {
                 LLR.put(msg.NodeID, msg.piggyback_LLR);
             }
-
         }
 
         else if (msg.msgType == MessageType.TAKE_TENTATIVE_CK) {
@@ -167,7 +179,7 @@ public class Protocol {
                     try {
                         client.sendMessage(currentNode.neighbors.get(msg.NodeID),
                                 new Message(MessageType.WILLING_TO_CK, "not required to take ck", currentNode.ID, 0,
-                                        null));
+                                        null, vectorClock));
                     } catch (Exception e) {
                         // TODO Auto-generated catch block
                         e.printStackTrace();
@@ -178,7 +190,7 @@ public class Protocol {
                 try {
                     client.sendMessage(currentNode.neighbors.get(msg.NodeID),
                             new Message(MessageType.WILLING_TO_CK, "already took ck", currentNode.ID, 0,
-                                    null));
+                                    null, vectorClock));
                 } catch (Exception e) {
                     // TODO Auto-generated catch block
                     e.printStackTrace();
@@ -235,7 +247,7 @@ public class Protocol {
                             sentCommit.incrementAndGet();
                             System.out.println("SENDING MESSAGE TO COMMIT TO MACHINE " + nei);
                             client.sendMessage(currentNode.neighbors.get(nei),
-                                    new Message(MessageType.COMMIT, "", currentNode.ID, 0, parents));
+                                    new Message(MessageType.COMMIT, "", currentNode.ID, 0, parents, vectorClock));
                         } catch (Exception e) {
                             // TODO Auto-generated catch block
                             e.printStackTrace();
@@ -257,7 +269,7 @@ public class Protocol {
                         try {
                             System.out.println("SENDING ACKOWLEDGEMENT MESSAGE TO MACHINE " + msg.NodeID);
                             client.sendMessage(currentNode.neighbors.get(msg.NodeID),
-                                    new Message(MessageType.ACKNOWLEDGE, null, currentNode.ID, 0, parents));
+                                    new Message(MessageType.ACKNOWLEDGE, null, currentNode.ID, 0, parents, vectorClock));
                         } catch (Exception e) {
 
                         }
@@ -268,7 +280,7 @@ public class Protocol {
                 try {
                     System.out.println("SENDING ACKOWLEDGEMENT MESSAGE TO MACHINE " + msg.NodeID);
                     client.sendMessage(currentNode.neighbors.get(msg.NodeID),
-                            new Message(MessageType.ACKNOWLEDGE, null, currentNode.ID, 0, parents));
+                            new Message(MessageType.ACKNOWLEDGE, null, currentNode.ID, 0, parents, vectorClock));
                 } catch (Exception e) {
 
                 }
@@ -299,7 +311,7 @@ public class Protocol {
                     if (!parents.contains(nei)) {
                         try {
                             client.sendMessage(currentNode.neighbors.get(nei),
-                                    new Message(MessageType.MOVE_ON, "", currentNode.ID, 0, parents));
+                                    new Message(MessageType.MOVE_ON, "", currentNode.ID, 0, parents, vectorClock));
                         } catch (Exception e) {
                             // TODO Auto-generated catch block
                             e.printStackTrace();
@@ -395,10 +407,10 @@ public class Protocol {
                     System.out.println("Sending parent WILLING_TO_CK");
                     if (willing_to_ck) {
                         client.sendMessage(currentNode.neighbors.get(initiator),
-                                new Message(MessageType.WILLING_TO_CK, "null", currentNode.ID, 0, null));
+                                new Message(MessageType.WILLING_TO_CK, "null", currentNode.ID, 0, null, vectorClock));
                     } else {
                         client.sendMessage(currentNode.neighbors.get(initiator),
-                                new Message(MessageType.NOT_WILLING_TO_CK, "null", currentNode.ID, 0, null));
+                                new Message(MessageType.NOT_WILLING_TO_CK, "null", currentNode.ID, 0, null, vectorClock));
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -430,7 +442,7 @@ public class Protocol {
                         localNumSentToCohorts++;
                         client.sendMessage(currentNode.neighbors.get(c), new Message(MessageType.TAKE_TENTATIVE_CK,
                                 "requesting to take tentative checkpoint", currentNode.ID,
-                                tentativeCheckpoint.LLR.get(c), parents));
+                                tentativeCheckpoint.LLR.get(c), parents, vectorClock));
                     } catch (Exception e) {
                         // TODO Auto-generated catch block
                         e.printStackTrace();
@@ -465,7 +477,7 @@ public class Protocol {
                         sentCommit.incrementAndGet();
                         client.sendMessage(currentNode.neighbors.get(c), new Message(MessageType.COMMIT,
                                 "requesting to make checkpoint permanent", currentNode.ID,
-                                tentativeCheckpoint.LLR.get(c), parents));
+                                tentativeCheckpoint.LLR.get(c), parents, vectorClock));
                     } catch (Exception e) {
                         // TODO Auto-generated catch block
                         e.printStackTrace();
@@ -477,6 +489,7 @@ public class Protocol {
             // taken permanent checkpoint before exiting initiator instance
             while (!acknowledgementReceived.get()) {
             }
+            ;
 
         }
     }
@@ -511,7 +524,7 @@ public class Protocol {
                         sendLabels.put(randomNeighbor.ID, newLabelValue);
                         client.sendMessage(randomNeighbor,
                                 new Message(MessageType.APPLICATION, "sending app message", currentNode.ID,
-                                        newLabelValue, null));
+                                        newLabelValue, null, vectorClock));
                     } catch (Exception e) {
                         // TODO Auto-generated catch block
                         e.printStackTrace();

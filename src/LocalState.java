@@ -17,12 +17,14 @@ public class LocalState {
     ConcurrentHashMap<Integer, Integer> sendLabels;
     ConcurrentHashMap<Integer, Integer> FLS;
     ConcurrentHashMap<Integer, Integer> LLR;
+    ConcurrentHashMap<Integer, Integer> LLS;
 
     public LocalState(ConcurrentHashMap<Integer, Integer> sendLabels, ConcurrentHashMap<Integer, Integer> FLS,
-            ConcurrentHashMap<Integer, Integer> LLR, AtomicIntegerArray vectorClock) {
+            ConcurrentHashMap<Integer, Integer> LLR, ConcurrentHashMap<Integer, Integer> LLS, AtomicIntegerArray vectorClock) {
         this.sendLabels = sendLabels;
         this.LLR = LLR;
         this.FLS = FLS;
+        this.LLS = LLS;
         this.vectorClock = vectorClock;
     }
 

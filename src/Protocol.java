@@ -43,6 +43,10 @@ public class Protocol {
     FileWriter fileWriter;
     BufferedWriter outputWriter;
 
+    // output recoveries to a file
+    FileWriter fileWriterRecovery;
+    BufferedWriter outputWriterRecovery;
+
     // if initiator, don't need to check LLR >= FLS > ground
     // AtomicBoolean initiator = new AtomicBoolean(Boolean.TRUE);
 
@@ -65,6 +69,8 @@ public class Protocol {
     AtomicBoolean hasRolledBack = new AtomicBoolean(Boolean.FALSE);
     AtomicBoolean receivedRecoveryResponses = new AtomicBoolean(Boolean.FALSE);
     AtomicBoolean alreadyResetSystem = new AtomicBoolean(Boolean.FALSE);
+    AtomicBoolean hasCapturedInstace = new AtomicBoolean(Boolean.FALSE);
+    AtomicBoolean receivedRollbackDecision = new AtomicBoolean(Boolean.FALSE);
 
     // variables to move on to next operation
     AtomicBoolean alreadyReceivedMoveOnMessage = new AtomicBoolean(Boolean.FALSE);
@@ -94,6 +100,16 @@ public class Protocol {
         }
         outputWriter = new BufferedWriter(fileWriter);
 
+        try {
+            fileWriterRecovery = new FileWriter(
+                    "/home/010/s/sx/sxc180101/AdvancedOS/project3/node-" + this.currentNode.ID
+                            + "-recovery.out");
+        } catch (IOException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        outputWriterRecovery = new BufferedWriter(fileWriterRecovery);
+
         // start server and clients
         new Thread(server).start();
         Thread.sleep(5000);
@@ -108,6 +124,8 @@ public class Protocol {
 
         int iter = 0;
         while (iter < operations.size()) {
+            System.out.println("CURRENT NODE: " + currentNode.ID);
+            System.out.println("ITER: " + iter);
             globalSequence.set(iter);
             Action op = operations.get(iter);
             if (op.initiator.ID == currentNode.ID) {
@@ -125,6 +143,15 @@ public class Protocol {
                     while (instanceInProgress.get()) {
                     }
                     ;
+
+                    // sleep for 5 seconds before telling threads to move on to next operation to
+                    // make thier checkpoints permanent
+                    try {
+                        Thread.sleep(5000);
+                    } catch (InterruptedException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
 
                     // inform other processes that your are done with your instance using flooding
                     HashSet<Integer> parents = new HashSet<Integer>();
@@ -147,13 +174,49 @@ public class Protocol {
                     System.out.println("Rollback initiated by: " + currentNode.ID);
                     instanceInProgress.set(true);
                     new Thread(new Recovery(currentNode.ID, new HashSet<Integer>())).start();
+                    while (instanceInProgress.get()) {
+                    }
+                    ;
+                    // sleep for 5 seconds before telling threads to move on to next operation to
+                    // make rolling back permanently for other processes
+                    try {
+                        Thread.sleep(5000);
+                    } catch (InterruptedException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
+                    // inform other processes that your are done with your instance using flooding
+                    HashSet<Integer> parents = new HashSet<Integer>();
+                    parents.add(currentNode.ID);
+                    for (Integer i : currentNode.neighbors.keySet()) {
+                        try {
+                            // vectorClock.incrementAndGet(currentNode.ID);
+                            System.out.println("sending MOVE_ON Messages to node: " + i);
+                            client.sendMessage(currentNode.neighbors.get(i), new Message(MessageType.MOVE_ON,
+                                    "move to next action", currentNode.ID, -1, 0, parents, vectorClock));
+                        } catch (Exception e) {
+                            // TODO Auto-generated catch block
+                            e.printStackTrace();
+                        }
+                    }
+
+                    iter += 1;
+                    System.out.println("Moving on to next operation");
                 }
             } else {
                 // wait until current instance is done before moving on to next operation
                 while (!receivedMoveOnMessage.get()) {
                 }
                 ;
+
+                try {
+                    Thread.sleep(5000);
+                } catch (InterruptedException e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
                 iter += 1;
+                alreadyReceivedMoveOnMessage.set(false);
                 receivedMoveOnMessage.set(false);
             }
         }
@@ -167,6 +230,25 @@ public class Protocol {
             LLS.put(nei.ID, Integer.MIN_VALUE);
             sendLabels.put(nei.ID, 0);
         }
+
+        ConcurrentHashMap<Integer, Integer> LLRCopy = new ConcurrentHashMap<Integer, Integer>();
+        ConcurrentHashMap<Integer, Integer> FLSCopy = new ConcurrentHashMap<Integer, Integer>();
+        ConcurrentHashMap<Integer, Integer> LLSCopy = new ConcurrentHashMap<Integer, Integer>();
+        ConcurrentHashMap<Integer, Integer> sendLabelsCopy = new ConcurrentHashMap<Integer, Integer>();
+        LLRCopy.putAll(LLR);
+        FLSCopy.putAll(FLS);
+        LLSCopy.putAll(LLS);
+        sendLabelsCopy.putAll(sendLabels);
+        AtomicIntegerArray vectorClockCopy = new AtomicIntegerArray(nodeSize);
+
+        synchronized (vectorClock) {
+            vectorClock.incrementAndGet(currentNode.ID);
+            for (int i = 0; i < nodeSize; i++) {
+                vectorClockCopy.set(i, vectorClock.get(i));
+            }
+        }
+
+        permCheckpoints.add(new LocalState(sendLabels, FLSCopy, LLRCopy, LLSCopy, vectorClockCopy));
     }
 
     public void startClients() throws Exception {
@@ -256,7 +338,7 @@ public class Protocol {
                 permCheckpoints.add(tentativeCheckpoint);
                 try {
                     outputWriter.write("Sequence: " + globalSequence + " Vector Clock: "
-                            + tentativeCheckpoint.vectorClock.toString());
+                            + tentativeCheckpoint.vectorClock.toString() + " LLS: " + tentativeCheckpoint.LLS.toString());
                     outputWriter.newLine();
                     outputWriter.flush();
                 } catch (IOException e) {
@@ -280,30 +362,31 @@ public class Protocol {
                 }
                 tentativeCheckpoint = null;
                 receivedCommitDecision.set(true);
+                // sleep before sending move on messages
+                try {
+                    Thread.sleep(5000);
+                } catch (InterruptedException e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
             }
 
-        }
-
-        // only for initiator to end its current instance
-        else if (msg.msgType == MessageType.ACKNOWLEDGE) {
-            System.out.println("RECEIVED ACKNOWLEDGEMENT FROM MACHINE " + msg.NodeID);
-            sentCommit.decrementAndGet();
-            if (sentCommit.get() == 0) {
-                acknowledgementReceived.set(true);
-                System.out.println("MADE ALL CHECKPOINTS PERMANENT");
-            }
         }
 
         else if (msg.msgType == MessageType.RECOVER) {
-            System.out.println("Received to rollback from machine " + msg.NodeID);
-
+            
             // rollback if LLR > LLS
             if (!hasRolledBack.get()) {
-                if (LLR.get(msg.NodeID) < msg.piggyback_LLS) {
+                System.out.println("Received to rollback from machine " + msg.NodeID);
+                System.out.println("Is LLR < LLS: " + LLR.get(msg.NodeID) + " < " + msg.piggyback_LLS);
+                System.out.println("msg.piggyback_LLR: " + msg.piggyback_LLR);
+
+                if (LLR.get(msg.NodeID) > msg.piggyback_LLS) {
                     // agree to roll back
                     System.out.println("agree to roll back");
                     hasRolledBack.set(true);
-                    new Thread(new Recovery(msg.NodeID, msg.parents));
+                    new Thread(new Recovery(msg.NodeID, msg.parents)).start();
+                    ;
                 } else {
                     System.out.println("no need to roll back");
                     // send willing_to_ck
@@ -331,24 +414,59 @@ public class Protocol {
             }
         } else if (msg.msgType == MessageType.ROLLBACK) {
 
+            System.out.println("recevied request to rollback permanent if possible");
             if (hasRolledBack.get()) {
-
                 if (!alreadyResetSystem.get()) {
+                    System.out.println("Rolling back process");
                     // set new system state
                     synchronized (vectorClock) {
                         LocalState lastCheckpoint = permCheckpoints.remove(permCheckpoints.size() - 1);
                         sendLabels.putAll(lastCheckpoint.sendLabels);
                         FLS.putAll(lastCheckpoint.FLS);
-                        LLR.putAll(lastCheckpoint.LLR);
+                        
+                        //LLR.putAll(lastCheckpoint.LLR);
+                        // reset LLR values to ground
+                        for (Integer k: LLR.keySet()) {
+                            LLR.put(k, Integer.MIN_VALUE);
+                        }
+
                         LLS.putAll(lastCheckpoint.LLS);
 
                         for (int i = 0; i < nodeSize; i++) {
-                            vectorClock.set(i, tentativeCheckpoint.vectorClock.get(i));
+                            vectorClock.set(i, lastCheckpoint.vectorClock.get(i));
+                        }
+                        System.out.println("Rolling back permanently and writing to file");
+                        try {
+                            outputWriterRecovery.write("Sequence: " + globalSequence + " Vector Clock: "
+                                    + vectorClock.toString());
+                            outputWriterRecovery.newLine();
+                            outputWriterRecovery.flush();
+                        } catch (IOException e) {
+                            // TODO Auto-generated catch block
+                            e.printStackTrace();
                         }
                     }
                     alreadyResetSystem.set(true);
+                    receivedRollbackDecision.set(true);
                 }
 
+            } else {
+                // no need to rollback to previous checkpoint
+                // capture latest perm checkpoint to file once for this instance
+                if (!hasCapturedInstace.get()) {
+                    System.out.println("Didn't roll back but writing current state to file");
+                    try {
+                        outputWriterRecovery.write("Sequence: " + globalSequence + " Vector Clock: "
+                                + vectorClock.toString());
+                        outputWriterRecovery.newLine();
+                        outputWriterRecovery.flush();
+                    } catch (IOException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
+
+                    hasCapturedInstace.set(true);
+                }
             }
             // send roll back to neighbors
             HashSet<Integer> parents = msg.parents;
@@ -357,17 +475,17 @@ public class Protocol {
             for (Integer nei : currentNode.neighbors.keySet()) {
                 if (!parents.contains(nei)) {
                     try {
-                        client.sendMessage(currentNode.neighbors.get(nei), new Message(MessageType.ROLLBACK, null, currentNode.ID, 0, 0, parents, vectorClock));
+                        client.sendMessage(currentNode.neighbors.get(nei),
+                                new Message(MessageType.ROLLBACK, null, currentNode.ID, 0, 0, parents, vectorClock));
                     } catch (Exception e) {
 
                     }
                 }
             }
-
         }
 
         else if (msg.msgType == MessageType.WILLING_TO_RB) {
-            System.out.println("Received Willing to take Checkpoint from machine " + msg.NodeID);
+            System.out.println("Received Willing rollback from machine " + msg.NodeID);
             willingToRecover.set(willingToRecover.get() && Boolean.TRUE);
             sentRequests.decrementAndGet();
 
@@ -381,15 +499,16 @@ public class Protocol {
 
             if (!alreadyReceivedMoveOnMessage.get()) {
                 alreadyReceivedMoveOnMessage.set(true);
-                System.out.println("Received Message to move on to next operation");
+                System.out.println("Received Message to move on to next operation from node: " + msg.NodeID);
                 HashSet<Integer> parents = msg.parents;
                 parents.add(currentNode.ID);
-
+                System.out.println("Parents: " + parents.toString());
                 // Flood message to neighbors
                 for (Integer nei : currentNode.neighbors.keySet()) {
                     if (!parents.contains(nei)) {
                         try {
                             // vectorClock.incrementAndGet(currentNode.ID);
+                            System.out.println("Sending MOVE_ON message to node: " + nei);
                             client.sendMessage(currentNode.neighbors.get(nei),
                                     new Message(MessageType.MOVE_ON, "", currentNode.ID, 0, 0, parents, vectorClock));
                         } catch (Exception e) {
@@ -403,19 +522,6 @@ public class Protocol {
         }
 
     }
-
-    /*
-     * CHECKPOINT ALGORITHM
-     * To send messages (application, ck, etc.) have different threads and only send
-     * when a lock is aquired
-     * Will help freeze application message until lock is given up by checkpointing
-     * thread
-     * - Take tentative checkpoint
-     * - Request checkpoints to its cohorts
-     * - Wait for yes from all cohorts
-     * - If yes, make checkpoints permanent
-     * - else discard tentative checkpoint
-     */
 
     class Checkpoint implements Runnable {
 
@@ -565,10 +671,11 @@ public class Protocol {
             System.out.println("At commit checkpoints");
             // make checkpoint permanent & send commit message to all cohorts that took
             permCheckpoints.add(tentativeCheckpoint);
+
             // write ck to file with instance sequence
             try {
                 outputWriter.write(
-                        "Sequence: " + globalSequence + " Vector Clock: " + tentativeCheckpoint.vectorClock.toString());
+                        "Sequence: " + globalSequence + " Vector Clock: " + tentativeCheckpoint.vectorClock.toString() + " LLS: " + tentativeCheckpoint.LLS.keySet());
                 outputWriter.newLine();
                 outputWriter.flush();
             } catch (IOException e) {
@@ -580,7 +687,7 @@ public class Protocol {
             for (Integer c : cohorts) {
                 if (!parents.contains(c)) {
                     try {
-                        System.out.println("Sending cohort" + c + "to make its checkpoint permanent");
+                        System.out.println("Sending cohort " + c + " to make its checkpoint permanent");
                         sentCommit.incrementAndGet();
                         // vectorClock.incrementAndGet(currentNode.ID);
                         client.sendMessage(currentNode.neighbors.get(c), new Message(MessageType.COMMIT,
@@ -592,6 +699,7 @@ public class Protocol {
                     }
                 }
             }
+            tentativeCheckpoint = null;
         }
     }
 
@@ -605,6 +713,8 @@ public class Protocol {
             this.parents = parents;
             this.parents.add(initiator);
             receivedRecoveryResponses.set(false);
+            alreadyReceivedMoveOnMessage.set(false);
+            alreadyResetSystem.set(false);
         }
 
         @Override
@@ -619,8 +729,19 @@ public class Protocol {
                 }
                 System.out.println("Starting rollback");
                 rollback();
+
+                // sleep to filter through extra rollback messages
+                try {
+                    Thread.sleep(10000);
+                } catch (InterruptedException e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
+
                 instanceInProgress.set(false);
                 hasRolledBack.set(false);
+                hasCapturedInstace.set(false);
+                receivedRollbackDecision.set(false);
             } finally {
                 sendMessageLock.unlock();
             }
@@ -634,8 +755,9 @@ public class Protocol {
                 if (!parents.contains(nei)) {
                     try {
                         sentRequests.incrementAndGet();
+                        System.out.println("Sending Recover message with LLS: " + LLS.get(nei));
                         client.sendMessage(currentNode.neighbors.get(nei), new Message(MessageType.RECOVER,
-                                "prepare to rollback", currentNode.ID, 0, LLS.get(nei), null, vectorClock));
+                                "prepare to rollback", currentNode.ID, 0, LLS.get(nei), parents, vectorClock));
                     } catch (Exception e) {
                         // TODO Auto-generated catch block
                         e.printStackTrace();
@@ -666,10 +788,17 @@ public class Protocol {
                         }
                     }
                 }
+                // sleep for 5 seconds before sending move on messages
+                try {
+                    Thread.sleep(5000);
+                } catch (InterruptedException e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
 
             } else {
                 try {
-                    System.out.println("Sending parent WILLING_TO_CK");
+                    System.out.println("Sending parent WILLING_TO_RB");
                     if (willingToRecover.get()) {
                         // vectorClock.incrementAndGet(currentNode.ID);
                         client.sendMessage(currentNode.neighbors.get(initiator),
@@ -685,6 +814,10 @@ public class Protocol {
                     e.printStackTrace();
                 }
 
+                while (!receivedRollbackDecision.get()) {
+                }
+                ;
+
             }
 
         }
@@ -692,15 +825,34 @@ public class Protocol {
         public void resetSystemToLastCheckpoint() {
 
             synchronized (vectorClock) {
+                System.out.println("permCheckpoints: " + permCheckpoints.toString());
+                System.out.println("permCheckpoints size: " + permCheckpoints.size());
                 LocalState lastCheckpoint = permCheckpoints.remove(permCheckpoints.size() - 1);
                 sendLabels.putAll(lastCheckpoint.sendLabels);
                 FLS.putAll(lastCheckpoint.FLS);
-                LLR.putAll(lastCheckpoint.LLR);
+                
+                // reset LLR to ground values
+                //LLR.putAll(lastCheckpoint.LLR);
+                for (Integer k: LLR.keySet()) {
+                    LLR.put(k, Integer.MIN_VALUE);
+                }
+                
                 LLS.putAll(lastCheckpoint.LLS);
 
                 for (int i = 0; i < nodeSize; i++) {
-                    vectorClock.set(i, tentativeCheckpoint.vectorClock.get(i));
+                    vectorClock.set(i, lastCheckpoint.vectorClock.get(i));
                 }
+
+                try {
+                    outputWriterRecovery.write("Sequence: " + lastCheckpoint.sequenceNumber + " Vector Clock: "
+                            + vectorClock.toString() + " LLS: " + LLS.toString());
+                    outputWriterRecovery.newLine();
+                    outputWriterRecovery.flush();
+                } catch (IOException e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
+
             }
         }
 

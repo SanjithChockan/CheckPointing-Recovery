@@ -34,6 +34,7 @@ public class Message implements Serializable {
 		this.message = message;
 		this.NodeID = NodeID;
 		this.piggyback_LLR = piggyback_LLR;
+		this.piggyback_LLS = piggyback_LLS;
 		this.parents = parents;
 		this.vectorClock = vectorClock;
 	}

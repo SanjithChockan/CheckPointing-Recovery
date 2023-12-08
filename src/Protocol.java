@@ -337,8 +337,8 @@ public class Protocol {
                 System.out.println("Made checkpoint permanent");
                 permCheckpoints.add(tentativeCheckpoint);
                 try {
-                    outputWriter.write("Sequence: " + globalSequence + " Vector Clock: "
-                            + tentativeCheckpoint.vectorClock.toString() + " LLS: " + tentativeCheckpoint.LLS.toString());
+                    outputWriter.write(globalSequence + ":"
+                            + tentativeCheckpoint.vectorClock.toString());
                     outputWriter.newLine();
                     outputWriter.flush();
                 } catch (IOException e) {
@@ -437,7 +437,7 @@ public class Protocol {
                         }
                         System.out.println("Rolling back permanently and writing to file");
                         try {
-                            outputWriterRecovery.write("Sequence: " + globalSequence + " Vector Clock: "
+                            outputWriterRecovery.write(globalSequence + ":"
                                     + vectorClock.toString());
                             outputWriterRecovery.newLine();
                             outputWriterRecovery.flush();
@@ -456,7 +456,7 @@ public class Protocol {
                 if (!hasCapturedInstace.get()) {
                     System.out.println("Didn't roll back but writing current state to file");
                     try {
-                        outputWriterRecovery.write("Sequence: " + globalSequence + " Vector Clock: "
+                        outputWriterRecovery.write(globalSequence + ":"
                                 + vectorClock.toString());
                         outputWriterRecovery.newLine();
                         outputWriterRecovery.flush();
@@ -675,7 +675,7 @@ public class Protocol {
             // write ck to file with instance sequence
             try {
                 outputWriter.write(
-                        "Sequence: " + globalSequence + " Vector Clock: " + tentativeCheckpoint.vectorClock.toString() + " LLS: " + tentativeCheckpoint.LLS.keySet());
+                         globalSequence + ":" + tentativeCheckpoint.vectorClock.toString());
                 outputWriter.newLine();
                 outputWriter.flush();
             } catch (IOException e) {
@@ -844,8 +844,8 @@ public class Protocol {
                 }
 
                 try {
-                    outputWriterRecovery.write("Sequence: " + lastCheckpoint.sequenceNumber + " Vector Clock: "
-                            + vectorClock.toString() + " LLS: " + LLS.toString());
+                    outputWriterRecovery.write(lastCheckpoint.sequenceNumber + ":"
+                            + vectorClock.toString());
                     outputWriterRecovery.newLine();
                     outputWriterRecovery.flush();
                 } catch (IOException e) {

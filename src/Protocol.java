@@ -39,6 +39,10 @@ public class Protocol {
     ConcurrentHashMap<Integer, Integer> LLS = new ConcurrentHashMap<Integer, Integer>();
     ConcurrentHashMap<Integer, Integer> sendLabels = new ConcurrentHashMap<Integer, Integer>();
 
+    // recovery consistency test variables
+    AtomicIntegerArray receivedMessages = new AtomicIntegerArray(nodeSize);
+    AtomicIntegerArray sentMessages = new AtomicIntegerArray(nodeSize);
+
     // output checkpoints to a file
     FileWriter fileWriter;
     BufferedWriter outputWriter;
@@ -88,6 +92,9 @@ public class Protocol {
         this.client = new SCTPClient(this.currentNode.neighbors);
         this.nodeSize = nodeSize;
         this.vectorClock = new AtomicIntegerArray(this.nodeSize);
+        this.receivedMessages = new AtomicIntegerArray(this.nodeSize);
+        this.sentMessages = new AtomicIntegerArray(this.nodeSize);
+
         initialize();
 
         try {
@@ -240,15 +247,25 @@ public class Protocol {
         LLSCopy.putAll(LLS);
         sendLabelsCopy.putAll(sendLabels);
         AtomicIntegerArray vectorClockCopy = new AtomicIntegerArray(nodeSize);
+        AtomicIntegerArray sentMessagesCopy = new AtomicIntegerArray(nodeSize);
+        AtomicIntegerArray receivedMessagesCopy = new AtomicIntegerArray(nodeSize);
 
         synchronized (vectorClock) {
             vectorClock.incrementAndGet(currentNode.ID);
             for (int i = 0; i < nodeSize; i++) {
                 vectorClockCopy.set(i, vectorClock.get(i));
             }
+
+            for (int i = 0; i < nodeSize; i++) {
+                sentMessagesCopy.set(i, sentMessages.get(i));
+            }
+            for (int i = 0; i < nodeSize; i++) {
+                receivedMessagesCopy.set(i, receivedMessages.get(i));
+            }
         }
 
-        permCheckpoints.add(new LocalState(sendLabels, FLSCopy, LLRCopy, LLSCopy, vectorClockCopy));
+        permCheckpoints.add(new LocalState(sendLabels, FLSCopy, LLRCopy, LLSCopy, vectorClockCopy, sentMessagesCopy,
+                receivedMessagesCopy));
     }
 
     public void startClients() throws Exception {
@@ -265,6 +282,7 @@ public class Protocol {
                     vectorClock.set(i, Math.max(msg.vectorClock.get(i), vectorClock.get(i)));
                 }
                 vectorClock.incrementAndGet(currentNode.ID);
+                receivedMessages.incrementAndGet(msg.NodeID);
             }
             // increment LLR on corresponding process
             synchronized (LLR) {
@@ -374,11 +392,11 @@ public class Protocol {
         }
 
         else if (msg.msgType == MessageType.RECOVER) {
-            
+
             // rollback if LLR > LLS
             if (!hasRolledBack.get()) {
                 System.out.println("Received to rollback from machine " + msg.NodeID);
-                System.out.println("Is LLR < LLS: " + LLR.get(msg.NodeID) + " < " + msg.piggyback_LLS);
+                System.out.println("Is LLR > LLS: " + LLR.get(msg.NodeID) + " < " + msg.piggyback_LLS);
                 System.out.println("msg.piggyback_LLR: " + msg.piggyback_LLR);
 
                 if (LLR.get(msg.NodeID) > msg.piggyback_LLS) {
@@ -423,10 +441,10 @@ public class Protocol {
                         LocalState lastCheckpoint = permCheckpoints.remove(permCheckpoints.size() - 1);
                         sendLabels.putAll(lastCheckpoint.sendLabels);
                         FLS.putAll(lastCheckpoint.FLS);
-                        
-                        //LLR.putAll(lastCheckpoint.LLR);
+
+                        // LLR.putAll(lastCheckpoint.LLR);
                         // reset LLR values to ground
-                        for (Integer k: LLR.keySet()) {
+                        for (Integer k : LLR.keySet()) {
                             LLR.put(k, Integer.MIN_VALUE);
                         }
 
@@ -438,7 +456,8 @@ public class Protocol {
                         System.out.println("Rolling back permanently and writing to file");
                         try {
                             outputWriterRecovery.write(globalSequence + ":"
-                                    + vectorClock.toString());
+                                    + "sentMessages:" + lastCheckpoint.sentMessages.toString() + ":receivedMessages:"
+                                    + lastCheckpoint.receivedMessages.toString());
                             outputWriterRecovery.newLine();
                             outputWriterRecovery.flush();
                         } catch (IOException e) {
@@ -457,7 +476,8 @@ public class Protocol {
                     System.out.println("Didn't roll back but writing current state to file");
                     try {
                         outputWriterRecovery.write(globalSequence + ":"
-                                + vectorClock.toString());
+                                + "sentMessages:" + sentMessages.toString()
+                                + ":receivedMessages:" + receivedMessages.toString());
                         outputWriterRecovery.newLine();
                         outputWriterRecovery.flush();
                     } catch (IOException e) {
@@ -574,14 +594,24 @@ public class Protocol {
                 sendLabelsCopy.putAll(sendLabels);
 
                 AtomicIntegerArray vectorClockCopy = new AtomicIntegerArray(nodeSize);
+                AtomicIntegerArray sentMessagesCopy = new AtomicIntegerArray(nodeSize);
+                AtomicIntegerArray receivedMessagesCopy = new AtomicIntegerArray(nodeSize);
 
                 synchronized (vectorClock) {
                     vectorClock.incrementAndGet(currentNode.ID);
                     for (int i = 0; i < nodeSize; i++) {
                         vectorClockCopy.set(i, vectorClock.get(i));
                     }
+
+                    for (int i = 0; i < nodeSize; i++) {
+                        sentMessagesCopy.set(i, 0);
+                    }
+                    for (int i = 0; i < nodeSize; i++) {
+                        receivedMessagesCopy.set(i, 0);
+                    }
                 }
-                tentativeCheckpoint = new LocalState(sendLabelsCopy, FLSCopy, LLRCopy, LLSCopy, vectorClockCopy);
+                tentativeCheckpoint = new LocalState(sendLabelsCopy, FLSCopy, LLRCopy, LLSCopy, vectorClockCopy,
+                        sentMessagesCopy, receivedMessagesCopy);
 
                 cohorts = new ArrayList<Integer>();
 
@@ -675,7 +705,7 @@ public class Protocol {
             // write ck to file with instance sequence
             try {
                 outputWriter.write(
-                         globalSequence + ":" + tentativeCheckpoint.vectorClock.toString());
+                        globalSequence + ":" + tentativeCheckpoint.vectorClock.toString());
                 outputWriter.newLine();
                 outputWriter.flush();
             } catch (IOException e) {
@@ -729,7 +759,8 @@ public class Protocol {
                 }
                 System.out.println("Starting rollback");
                 rollback();
-
+                System.out.println("exiting rollback function");
+                System.out.println("sleeping to filter through extra rollback messages");
                 // sleep to filter through extra rollback messages
                 try {
                     Thread.sleep(10000);
@@ -743,9 +774,10 @@ public class Protocol {
                 hasCapturedInstace.set(false);
                 receivedRollbackDecision.set(false);
             } finally {
+                System.out.println("Completed rollback");
                 sendMessageLock.unlock();
             }
-            System.out.println("Completed rollback");
+
         }
 
         public void rollback() {
@@ -756,8 +788,9 @@ public class Protocol {
                     try {
                         sentRequests.incrementAndGet();
                         System.out.println("Sending Recover message with LLS: " + LLS.get(nei));
+                        int piggyback_LLS = permCheckpoints.get(permCheckpoints.size() - 1).LLS.get(nei);
                         client.sendMessage(currentNode.neighbors.get(nei), new Message(MessageType.RECOVER,
-                                "prepare to rollback", currentNode.ID, 0, LLS.get(nei), parents, vectorClock));
+                                "prepare to rollback", currentNode.ID, 0, piggyback_LLS, parents, vectorClock));
                     } catch (Exception e) {
                         // TODO Auto-generated catch block
                         e.printStackTrace();
@@ -830,22 +863,26 @@ public class Protocol {
                 LocalState lastCheckpoint = permCheckpoints.remove(permCheckpoints.size() - 1);
                 sendLabels.putAll(lastCheckpoint.sendLabels);
                 FLS.putAll(lastCheckpoint.FLS);
-                
+
                 // reset LLR to ground values
-                //LLR.putAll(lastCheckpoint.LLR);
-                for (Integer k: LLR.keySet()) {
+                // LLR.putAll(lastCheckpoint.LLR);
+                for (Integer k : LLR.keySet()) {
                     LLR.put(k, Integer.MIN_VALUE);
                 }
-                
+
                 LLS.putAll(lastCheckpoint.LLS);
 
                 for (int i = 0; i < nodeSize; i++) {
                     vectorClock.set(i, lastCheckpoint.vectorClock.get(i));
                 }
 
+                sentMessages = new AtomicIntegerArray(nodeSize);
+                receivedMessages = new AtomicIntegerArray(nodeSize);
+
                 try {
-                    outputWriterRecovery.write(lastCheckpoint.sequenceNumber + ":"
-                            + vectorClock.toString());
+                    outputWriterRecovery.write(globalSequence + ":"
+                            +  "sentMessages:" + lastCheckpoint.sentMessages.toString()
+                            + ":receivedMessages:" + lastCheckpoint.receivedMessages.toString());
                     outputWriterRecovery.newLine();
                     outputWriterRecovery.flush();
                 } catch (IOException e) {
@@ -876,9 +913,9 @@ public class Protocol {
             while (true) {
 
                 try {
-                    System.out.println("sending app messages");
                     // pick random neighbor and send message
                     sendMessageLock.lock();
+                    System.out.println("sending app messages");
                     Node randomNeighbor = currentNode.neighbors.get(keysAsArray.get(rand.nextInt(keysAsArray.size())));
                     try {
                         int newLabelValue = sendLabels.get(randomNeighbor.ID) + 1;
@@ -898,6 +935,7 @@ public class Protocol {
                             for (int i = 0; i < nodeSize; i++) {
                                 vectorClockCopy.set(i, vectorClock.get(i));
                             }
+                            sentMessages.incrementAndGet(randomNeighbor.ID);
                         }
                         client.sendMessage(randomNeighbor,
                                 new Message(MessageType.APPLICATION, "sending app message", currentNode.ID,

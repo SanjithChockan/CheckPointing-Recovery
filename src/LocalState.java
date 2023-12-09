@@ -18,14 +18,19 @@ public class LocalState {
     ConcurrentHashMap<Integer, Integer> FLS;
     ConcurrentHashMap<Integer, Integer> LLR;
     ConcurrentHashMap<Integer, Integer> LLS;
+    AtomicIntegerArray receivedMessages;
+    AtomicIntegerArray sentMessages;
 
     public LocalState(ConcurrentHashMap<Integer, Integer> sendLabels, ConcurrentHashMap<Integer, Integer> FLS,
-            ConcurrentHashMap<Integer, Integer> LLR, ConcurrentHashMap<Integer, Integer> LLS, AtomicIntegerArray vectorClock) {
+            ConcurrentHashMap<Integer, Integer> LLR, ConcurrentHashMap<Integer, Integer> LLS,
+            AtomicIntegerArray vectorClock, AtomicIntegerArray sentMessages, AtomicIntegerArray receivedMessages) {
         this.sendLabels = sendLabels;
         this.LLR = LLR;
         this.FLS = FLS;
         this.LLS = LLS;
         this.vectorClock = vectorClock;
+        this.sentMessages = sentMessages;
+        this.receivedMessages = receivedMessages;
     }
 
     public String toString() {
